@@ -86,7 +86,7 @@ def mfilterer(File, timeframe, timestep):
                         df = df.loc[df['year'] == i]
 
         # Delete those parts of the data frame between the appended indices
-        df = pd.read_csv(f'data/data_pro.csv', delimiter=',')
+        df = pd.read_csv(f'data/{fileName}.csv', delimiter=',')
 
         counter = 0
         # lenMonth = 2976
@@ -96,11 +96,10 @@ def mfilterer(File, timeframe, timestep):
             counter += 1
         
         # Interpolate the remaining empty values
-        df = df.infer_objects(copy=False)
         df = (df.interpolate(method='polynomial', order=1)).round(2)
 
-        # # Delete the columns needed for preprocessing
-        # df = df.drop(columns=['year', 'month', 'day', 'hour', 'minute', 'second', 'startDate', 'endDate', 'weekOrder'])
+        # Delete the columns needed for preprocessing
+        df = df.drop(columns=['year', 'month', 'day', 'hour', 'minute', 'second', 'startDate', 'endDate', 'weekOrder'])
         
         # Save the data frame
         cols = list(df.columns.values.tolist())
@@ -152,15 +151,14 @@ def mfilterer(File, timeframe, timestep):
             counter += 1
         
         # Interpolate the remaining empty values
-        df = df.infer_objects(copy=False)
         df = (df.interpolate(method='polynomial', order=1)).round(2)
         
-        # # Delete the columns needed for preprocessing
-        # df = df.drop(columns=['year', 'month', 'day', 'hour', 'minute', 'second', 'startDate', 'endDate', 'weekOrder'])
+        # Delete the columns needed for preprocessing
+        df = df.drop(columns=['year', 'month', 'day', 'hour', 'minute', 'second', 'startDate', 'endDate', 'weekOrder'])
 
         # Save the data frame
         cols = list(df.columns.values.tolist())
-        df.to_csv(f'data/data_pro.csv', sep=',', encoding='utf-8', index=False, header=cols)
+        df.to_csv(f'data/{fileName}_pro.csv', sep=',', encoding='utf-8', index=False, header=cols)
         
     elif timeframe == 'c':
 
@@ -206,12 +204,11 @@ def mfilterer(File, timeframe, timestep):
         df = df.drop(df.index[rows_to_drop])
 
         # Interpolate the remaining empty values
-        df = df.infer_objects(copy=False)
-        df = (df.interpolate(method='polynomial', order=1)).round(2)
+        df = (df.interpolate(method='polynomial', order=2)).round(2)
 
-        # # Delete the columns needed for preprocessing
-        # df = df.drop(columns=['year', 'month', 'day', 'hour', 'minute', 'second', 'startDate', 'endDate', 'weekOrder'])
+        # Delete the columns needed for preprocessing
+        df = df.drop(columns=['year', 'month', 'day', 'hour', 'minute', 'second', 'startDate', 'endDate', 'weekOrder'])
 
         # Save the data frame
         cols = list(df.columns.values.tolist())
-        df.to_csv(f'data/data_pro.csv', sep=',', encoding='utf-8', index=False, header=cols)
+        df.to_csv(f'data/{fileName}_pro.csv', sep=',', encoding='utf-8', index=False, header=cols)

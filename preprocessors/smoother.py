@@ -47,7 +47,3 @@ def smoother(station):
             smoothed_data[col] = smoothed_values
 
     smoothed_data.to_csv(f'data/labeled_{station}_smo.csv', encoding='utf-8', sep=',', index=False)
-
-if __name__ == '__main__':
-
-    preprocessor(station='907')
