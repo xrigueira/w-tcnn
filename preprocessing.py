@@ -21,32 +21,32 @@ timeStep = '15 min' # '1 day', '15 min'
 
 if __name__ == '__main__':
 
-    # for varName in varNames:
+    for varName in varNames:
     
-    #     # Find the gaps in the time series, add them and leave them blank
-    #     checkGaps(File=f'{varName}.txt', timestep=timeStep, varname=varName)
-    #     print(f'[INFO] checkGaps() {varName} DONE')
+        # Find the gaps in the time series, add them and leave them blank
+        checkGaps(File=f'{varName}.txt', timestep=timeStep, varname=varName)
+        print(f'[INFO] checkGaps() {varName} DONE')
 
-    #     # Add 31s if timestep is 'a' and week information. See filler.py for details
-    #     filler(File=f'{varName}_full.csv', timeframe=timeFrame, timestep=timeStep, varname=varName)
-    #     print(f'[INFO] filler() {varName} DONE')
+        # Add 31s if timestep is 'a' and week information. See filler.py for details
+        filler(File=f'{varName}_full.csv', timeframe=timeFrame, timestep=timeStep, varname=varName)
+        print(f'[INFO] filler() {varName} DONE')
     
-    # for station in stations:
+    for station in stations:
         
-    #         # Join the filed databases
-    #         joiner(station=station)
-    #         print(f'[INFO] joiner() {station} DONE')
+            # Join the filed databases
+            joiner(station=station)
+            print(f'[INFO] joiner() {station} DONE')
 
-    # # Add the Label data to all stations
-    # labeler(stations=stations)
-    # print('[INFO] labeler() DONE')
+    # Add the Label data to all stations
+    labeler(stations=stations)
+    print('[INFO] labeler() DONE')
     
     for station in stations:
 
-        # # Filter out those months or weeks or days (depending on the desired
-        # # time unit) with too many NaN in several variables and iterate on the rest
-        # mfilterer(File=f'labeled_{station}.csv', timeframe=timeFrame, timestep=timeStep)
-        # print(f'[INFO] filterer() {station} DONE')
+        # Filter out those months or weeks or days (depending on the desired
+        # time unit) with too many NaN in several variables and iterate on the rest
+        mfilterer(File=f'labeled_{station}.csv', timeframe=timeFrame, timestep=timeStep)
+        print(f'[INFO] filterer() {station} DONE')
 
         # Smooth the data
         smoother(station=station)

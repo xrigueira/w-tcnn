@@ -126,29 +126,41 @@ if __name__ == '__main__':
     # Define seed
     torch.manual_seed(0)
 
+    # TODO. The number and names of the variables that go in are defined below. Same is the length of the output sequence and the inputs. HOWEVER, review the dataset class and transformer class
+    # to make sure that everything makes sense.
+
+    station = 901
+    task_type = 'MM' # MU for multivariate predicts univariate, MM for multivariate predicts multivariate
+
     # Define run number
-    run = 46
+    run = 1
     
     # Hyperparams
-    batch_size = 128
+    batch_size = 16
     validation_size = 0.125
-    # src_variables = ['x1']
-    src_variables = ['x1', 'x2']
-    tgt_variables = ['y']
-    input_variables = src_variables + tgt_variables
-    timestamp_col_name = "time"
+    src_variables = [f'ammonium_{station}', f'conductivity_{station}', 
+                    f'dissolved_oxygen_{station}', f'pH_{station}', 
+                    f'precipitation_{station}', f'turbidity_{station}',
+                    f'water_temperature_{station}']
+    tgt_variables = [f'ammonium_{station}', f'conductivity_{station}', 
+                    f'dissolved_oxygen_{station}', f'pH_{station}', 
+                    f'precipitation_{station}', f'turbidity_{station}',
+                    f'water_temperature_{station}']
+    # input_variables would be just the src or tgt because we are predicting the tgt from the src, and not a tgt that is not in the src
+    input_variables = src_variables
+    timestamp_col_name = "date"
 
     # Only use data from this date and onwards
-    cutoff_date = datetime.datetime(1980, 1, 1) 
+    cutoff_date = datetime.datetime(2005, 1, 1) 
 
-    d_model = 128
-    n_heads = 4
+    d_model = 16
+    n_heads = 2
     n_encoder_layers = 1
     n_decoder_layers = 1 # Remember that with the current implementation it always has a decoder layer that returns the weights
-    encoder_sequence_len = 1461 # length of input given to encoder used to create the pre-summarized windows (4 years of data) 1461
-    crushed_encoder_sequence_len = 53 # Encoder sequence length afther summarizing the data when defining the dataset 53
-    decoder_sequence_len = 1 # length of input given to decoder
-    output_sequence_len = 1 # target sequence length. If hourly data and length = 48, you predict 2 days ahead
+    encoder_sequence_len = 2016 # length of input given to encoder used to create the pre-summarized windows (4 years of data) 1461
+    # crushed_encoder_sequence_len = 53 # Encoder sequence length afther summarizing the data when defining the dataset 53
+    decoder_sequence_len = 672 # length of input given to decoder
+    output_sequence_len = 672 # target sequence length. If hourly data and length = 48, you predict 2 days ahead
     in_features_encoder_linear_layer = 256
     in_features_decoder_linear_layer = 256
     max_sequence_len = encoder_sequence_len
@@ -158,7 +170,7 @@ if __name__ == '__main__':
 
     # Run parameters
     lr = 0.001
-    epochs = 300
+    epochs = 500
 
     # Get device
     device = ('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
@@ -168,8 +180,8 @@ if __name__ == '__main__':
     data = utils.read_data(timestamp_col_name=timestamp_col_name)
     
     # Extract train and val data for nomralization purposes
-    training_val_lower_bound = datetime.datetime(1980, 10, 1)
-    training_val_upper_bound = datetime.datetime(2007, 9, 30)
+    training_val_lower_bound = datetime.datetime(2005, 1, 1)
+    training_val_upper_bound = datetime.datetime(2017, 12, 31)
 
     # Extract train/validation data
     training_val_data = data[(training_val_lower_bound <= data.index) & (data.index <= training_val_upper_bound)]
@@ -179,16 +191,16 @@ if __name__ == '__main__':
     training_val_range = (training_val_upper_bound - training_val_lower_bound).days
     train_val_percentage = (training_val_range / total_data_range)
     
-    # Normalize the data
-    from sklearn.preprocessing import MinMaxScaler
-    scaler = MinMaxScaler()
+    # # Normalize the data [already done in the smoother.py file]
+    # from sklearn.preprocessing import MinMaxScaler
+    # scaler = MinMaxScaler()
 
-    # Fit scaler on the training set
-    scaler.fit(training_val_data.iloc[:, 1:])
+    # # Fit scaler on the training set
+    # scaler.fit(training_val_data.iloc[:, 1:-1])
 
-    # Transform the training and test sets
-    data.iloc[:, 1:] = scaler.transform(data.iloc[:, 1:])
-
+    # # Transform the training and test sets
+    # data.iloc[:, 1:-1] = scaler.transform(data.iloc[:, 1:-1])
+    
     # Make list of (start_idx, end_idx) pairs that are used to slice the time series sequence into chuncks
     data_indices = utils.get_indices(data=data, window_size=window_size, step_size=step_size)
 
@@ -203,113 +215,121 @@ if __name__ == '__main__':
     testing_indices = data_indices[-round(len(data_indices) * (1-train_val_percentage)):]
 
     # Make instance of the custom dataset class
-    training_data = ds.TransformerDataset(data=torch.tensor(data[input_variables].values).float(),
+    training_data = ds.TransformerDataset(task_type=task_type, data=torch.tensor(data[input_variables].values).float(),
                                         indices=training_indices, encoder_sequence_len=encoder_sequence_len, 
                                         decoder_sequence_len=decoder_sequence_len, tgt_sequence_len=output_sequence_len)
-    validation_data = ds.TransformerDataset(data=torch.tensor(data[input_variables].values).float(),
+    validation_data = ds.TransformerDataset(task_type=task_type, data=torch.tensor(data[input_variables].values).float(),
                                         indices=validation_indices, encoder_sequence_len=encoder_sequence_len, 
                                         decoder_sequence_len=decoder_sequence_len, tgt_sequence_len=output_sequence_len)
-    testing_data = ds.TransformerDataset(data=torch.tensor(data[input_variables].values).float(),
+    testing_data = ds.TransformerDataset(task_type=task_type, data=torch.tensor(data[input_variables].values).float(),
                                         indices=testing_indices, encoder_sequence_len=encoder_sequence_len, 
                                         decoder_sequence_len=decoder_sequence_len, tgt_sequence_len=output_sequence_len)
-
-    # Set up dataloaders
-    training_val_data = training_data + validation_data # For testing puporses
-    training_data = DataLoader(training_data, batch_size, shuffle=False)
-    validation_data = DataLoader(validation_data, batch_size, shuffle=False)
-    testing_data = DataLoader(testing_data, batch_size=1, shuffle=False)
-    training_val_data = DataLoader(training_val_data, batch_size=1, shuffle=False) # For testing puporses
     
-    # Update the encoder sequence length to its crushed version
-    encoder_sequence_len = crushed_encoder_sequence_len
+    src, tgt, tgt_y, src_p, tgt_p = training_data[0]
+    # Continue reviewing that these data structures contain the correct data
+    print(f"src shape: {src}")
+    print(f"tgt shape: {tgt.shape}")
+    print(f"tgt_y shape: {tgt_y.shape}")
+    print(f"src_p shape: {src_p.shape}")
+    print(f"tgt_p shape: {tgt_p.shape}")
 
-    # Instantiate the transformer model and send it to device
-    model = tst.TimeSeriesTransformer(input_size=len(src_variables), decoder_sequence_len=decoder_sequence_len, 
-                                    batch_first=batch_first, d_model=d_model, n_encoder_layers=n_encoder_layers, 
-                                    n_decoder_layers=n_decoder_layers, n_heads=n_heads, dropout_encoder=0.2, 
-                                    dropout_decoder=0.2, dropout_pos_encoder=0.1, dim_feedforward_encoder=in_features_encoder_linear_layer, 
-                                    dim_feedforward_decoder=in_features_decoder_linear_layer, num_src_features=len(src_variables), 
-                                    num_predicted_features=len(tgt_variables)).to(device)
-
-    # Send model to device
-    model.to(device)
+    # # Set up dataloaders
+    # training_val_data = training_data + validation_data # For testing puporses
+    # training_data = DataLoader(training_data, batch_size, shuffle=False)
+    # validation_data = DataLoader(validation_data, batch_size, shuffle=False)
+    # testing_data = DataLoader(testing_data, batch_size=1, shuffle=False)
+    # training_val_data = DataLoader(training_val_data, batch_size=1, shuffle=False) # For testing puporses
     
-    # Print model and number of parameters
-    print('Defined model:\n', model)
-    utils.count_parameters(model)
+    # # # Update the encoder sequence length to its crushed version
+    # # encoder_sequence_len = crushed_encoder_sequence_len
+
+    # # Instantiate the transformer model and send it to device
+    # model = tst.TimeSeriesTransformer(input_size=len(src_variables), decoder_sequence_len=decoder_sequence_len, 
+    #                                 batch_first=batch_first, d_model=d_model, n_encoder_layers=n_encoder_layers, 
+    #                                 n_decoder_layers=n_decoder_layers, n_heads=n_heads, dropout_encoder=0.2, 
+    #                                 dropout_decoder=0.2, dropout_pos_encoder=0.1, dim_feedforward_encoder=in_features_encoder_linear_layer, 
+    #                                 dim_feedforward_decoder=in_features_decoder_linear_layer, num_src_features=len(src_variables), 
+    #                                 num_predicted_features=len(tgt_variables)).to(device)
+
+    # # Send model to device
+    # model.to(device)
     
-    # Make src mask for the decoder with size
-    # [batch_size*n_heads, output_sequence_length, encoder_sequence_len]
-    src_mask = utils.masker(dim1=encoder_sequence_len, dim2=encoder_sequence_len).to(device)
-    # src_mask = utils.generate_square_subsequent_mask(size=encoder_sequence_len).to(device)
+    # # Print model and number of parameters
+    # print('Defined model:\n', model)
+    # utils.count_parameters(model)
     
-    # Make the memory mask for the decoder
-    # memory_mask = utils.unmasker(dim1=output_sequence_len, dim2=encoder_sequence_len).to(device)
-    memory_mask = None
-
-    # Make tgt mask for decoder with size
-    # [batch_size*n_heads, output_sequence_length, output_sequence_length]
-    tgt_mask = utils.masker(dim1=output_sequence_len, dim2=output_sequence_len).to(device)
-    # tgt_mask = utils.generate_square_subsequent_mask(size=decoder_sequence_len).to(device)
+    # # Make src mask for the decoder with size
+    # # [batch_size*n_heads, output_sequence_length, encoder_sequence_len]
+    # src_mask = utils.masker(dim1=encoder_sequence_len, dim2=encoder_sequence_len).to(device)
+    # # src_mask = utils.generate_square_subsequent_mask(size=encoder_sequence_len).to(device)
     
-    # Define optimizer and loss function
-    loss_function = nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    # # Make the memory mask for the decoder
+    # # memory_mask = utils.unmasker(dim1=output_sequence_len, dim2=encoder_sequence_len).to(device)
+    # memory_mask = None
 
-    # Instantiate early stopping
-    early_stopping = utils.EarlyStopping(patience=30, verbose=True)
+    # # Make tgt mask for decoder with size
+    # # [batch_size*n_heads, output_sequence_length, output_sequence_length]
+    # tgt_mask = utils.masker(dim1=output_sequence_len, dim2=output_sequence_len).to(device)
+    # # tgt_mask = utils.generate_square_subsequent_mask(size=decoder_sequence_len).to(device)
+    
+    # # Define optimizer and loss function
+    # loss_function = nn.MSELoss()
+    # optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-    # Update model in the training process and test it
-    start_time = time.time()
-    df_training = pd.DataFrame(columns=('epoch', 'loss_train'))
-    df_validation = pd.DataFrame(columns=('epoch', 'loss_val'))
-    for t in range(epochs): # epochs is defined in the hyperparameters section above
-        print(f"Epoch {t+1}\n-------------------------------")
-        train(training_data, model, src_mask, memory_mask, tgt_mask, loss_function, optimizer, device, df_training, epoch=t)
-        epoch_val_loss = val(validation_data, model, src_mask, memory_mask, tgt_mask, loss_function, device, df_validation, epoch=t)
+    # # Instantiate early stopping
+    # early_stopping = utils.EarlyStopping(patience=30, verbose=True)
 
-        # Early stopping
-        early_stopping(epoch_val_loss, model, path='checkpoints')
-        if early_stopping.early_stop:
-            print("Early stopping")
-            break
+    # # Update model in the training process and test it
+    # start_time = time.time()
+    # df_training = pd.DataFrame(columns=('epoch', 'loss_train'))
+    # df_validation = pd.DataFrame(columns=('epoch', 'loss_val'))
+    # for t in range(epochs): # epochs is defined in the hyperparameters section above
+    #     print(f"Epoch {t+1}\n-------------------------------")
+    #     train(training_data, model, src_mask, memory_mask, tgt_mask, loss_function, optimizer, device, df_training, epoch=t)
+    #     epoch_val_loss = val(validation_data, model, src_mask, memory_mask, tgt_mask, loss_function, device, df_validation, epoch=t)
+
+    #     # Early stopping
+    #     early_stopping(epoch_val_loss, model, path='checkpoints')
+    #     if early_stopping.early_stop:
+    #         print("Early stopping")
+    #         break
         
-    print("Done! ---Execution time: %s seconds ---" % (time.time() - start_time))
+    # print("Done! ---Execution time: %s seconds ---" % (time.time() - start_time))
 
-    # # Save the model
-    # torch.save(model, "models/model.pth")
-    # print("Saved PyTorch entire model to models/model.pth")
+    # # # Save the model
+    # # torch.save(model, "models/model.pth")
+    # # print("Saved PyTorch entire model to models/model.pth")
 
-    # # Load the model
-    # model = torch.load("models/model.pth").to(device)
-    # print('Loaded PyTorch model from models/model.pth')
+    # # # Load the model
+    # # model = torch.load("models/model.pth").to(device)
+    # # print('Loaded PyTorch model from models/model.pth')
 
-    # Inference
-    tgt_y_truth_train_val, tgt_y_hat_train_val = test(training_val_data, model, src_mask, memory_mask, tgt_mask, device)
-    tgt_y_truth_test, tgt_y_hat_test = test(testing_data, model, src_mask, memory_mask, tgt_mask, device)
+    # # Inference
+    # tgt_y_truth_train_val, tgt_y_hat_train_val = test(training_val_data, model, src_mask, memory_mask, tgt_mask, device)
+    # tgt_y_truth_test, tgt_y_hat_test = test(testing_data, model, src_mask, memory_mask, tgt_mask, device)
     
-    # Save results
-    utils.logger(run=run, batches=batch_size, d_model=d_model, n_heads=n_heads,
-                encoder_layers=n_encoder_layers, decoder_layers=n_decoder_layers,
-                dim_ll_encoder=in_features_encoder_linear_layer, dim_ll_decoder=in_features_decoder_linear_layer,
-                lr=lr, epochs=epochs)
+    # # Save results
+    # utils.logger(run=run, batches=batch_size, d_model=d_model, n_heads=n_heads,
+    #             encoder_layers=n_encoder_layers, decoder_layers=n_decoder_layers,
+    #             dim_ll_encoder=in_features_encoder_linear_layer, dim_ll_decoder=in_features_decoder_linear_layer,
+    #             lr=lr, epochs=epochs)
 
-    # Plot loss
-    plt.figure(1);plt.clf()
-    plt.plot(df_training['epoch'], df_training['loss_train'], '-o', label='loss train')
-    plt.plot(df_training['epoch'], df_validation['loss_val'], '-o', label='loss val')
-    plt.yscale('log')
-    plt.xlabel(r'epoch')
-    plt.ylabel(r'loss')
-    plt.legend()
-    # plt.show()
+    # # Plot loss
+    # plt.figure(1);plt.clf()
+    # plt.plot(df_training['epoch'], df_training['loss_train'], '-o', label='loss train')
+    # plt.plot(df_training['epoch'], df_validation['loss_val'], '-o', label='loss val')
+    # plt.yscale('log')
+    # plt.xlabel(r'epoch')
+    # plt.ylabel(r'loss')
+    # plt.legend()
+    # # plt.show()
 
-    plt.savefig(f'results/run_{run}/loss.png', dpi=300)
+    # plt.savefig(f'results/run_{run}/loss.png', dpi=300)
 
-    # Plot testing results
-    utils.plots(tgt_y_truth_train_val, tgt_y_hat_train_val, 'train_val', run=run)
-    utils.plots(tgt_y_truth_test, tgt_y_hat_test, 'test', run=run)
+    # # Plot testing results
+    # utils.plots(tgt_y_truth_train_val, tgt_y_hat_train_val, 'train_val', run=run)
+    # utils.plots(tgt_y_truth_test, tgt_y_hat_test, 'test', run=run)
 
-    # Metrics
-    utils.metrics(tgt_y_truth_train_val, tgt_y_hat_train_val, 'train_val')
-    utils.metrics(tgt_y_truth_test, tgt_y_hat_test, 'test')
+    # # Metrics
+    # utils.metrics(tgt_y_truth_train_val, tgt_y_hat_train_val, 'train_val')
+    # utils.metrics(tgt_y_truth_test, tgt_y_hat_test, 'test')

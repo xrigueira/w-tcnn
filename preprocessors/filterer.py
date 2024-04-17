@@ -99,7 +99,7 @@ def mfilterer(File, timeframe, timestep):
         df = (df.interpolate(method='polynomial', order=1)).round(2)
 
         # Delete the columns needed for preprocessing
-        df = df.drop(columns=['year', 'month', 'day', 'hour', 'minute', 'second', 'startDate', 'endDate', 'weekOrder'])
+        df = df.drop(columns=['year', 'month', 'day', 'hour', 'minute', 'second', 'startDate', 'endDate', 'week', 'weekOrder'])
         
         # Save the data frame
         cols = list(df.columns.values.tolist())
@@ -154,7 +154,7 @@ def mfilterer(File, timeframe, timestep):
         df = (df.interpolate(method='polynomial', order=1)).round(2)
         
         # Delete the columns needed for preprocessing
-        df = df.drop(columns=['year', 'month', 'day', 'hour', 'minute', 'second', 'startDate', 'endDate', 'weekOrder'])
+        df = df.drop(columns=['year', 'month', 'day', 'hour', 'minute', 'second', 'startDate', 'endDate', 'week', 'weekOrder'])
 
         # Save the data frame
         cols = list(df.columns.values.tolist())
@@ -207,7 +207,7 @@ def mfilterer(File, timeframe, timestep):
         df = (df.interpolate(method='polynomial', order=2)).round(2)
 
         # Delete the columns needed for preprocessing
-        df = df.drop(columns=['year', 'month', 'day', 'hour', 'minute', 'second', 'startDate', 'endDate', 'weekOrder'])
+        df = df.drop(columns=['year', 'month', 'day', 'hour', 'minute', 'second', 'startDate', 'endDate', 'week', 'weekOrder'])
 
         # Save the data frame
         cols = list(df.columns.values.tolist())

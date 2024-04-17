@@ -71,14 +71,15 @@ def get_indices(data: pd.DataFrame, window_size: int, step_size: int) -> list:
         
     return indices
 
-def read_data(data_dir: Union[str, Path] = 'data', timestamp_col_name: str='time') -> pd.DataFrame:
+def read_data(data_dir: Union[str, Path] = 'data', station: int=901, timestamp_col_name: str='date') -> pd.DataFrame:
     
     """Read data from csv file and return a pd.DataFrame object.
     ----------
     Arguments:
     data_dir: str or Path object specifying the path to the directory containing the data.
-    tgt_col_name: str, the name of the column containing the target variable
-    timestamp_col_name: str, the name of the column or named index containing the timestamps
+    station: int, the station number to read data from.
+    tgt_col_name: str, the name of the column containing the target variable.
+    timestamp_col_name: str, the name of the column or named index containing the timestamps-
     
     Returns:
     data (pd.DataFrame): data read an loaded as a Pandas DataFrame
@@ -87,8 +88,8 @@ def read_data(data_dir: Union[str, Path] = 'data', timestamp_col_name: str='time
     # Ensure that `data_dir` is a Path object
     data_dir = Path(data_dir)
     
-    # Read csv file
-    csv_files = list(data_dir.glob("*.csv"))
+    # Read smothed csv file
+    csv_files = list(data_dir.glob(f"*{station}_smo.csv"))
     
     if len(csv_files) > 1:
         raise ValueError("data_dir contains more than 1 csv file. Must only contain 1")

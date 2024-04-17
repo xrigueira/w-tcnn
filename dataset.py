@@ -11,6 +11,8 @@ class TransformerDataset(Dataset):
     Dataset class used for transformer models.
     ----------
     Arguments:
+    task_type: str, the type of task. It can be multivariate predicts univariate (MU), or 
+    multivariate predicts multivariate (MM).
     data: tensor, the entire train, validation or test data sequence before any slicing. 
     If univariate, data.size() will be [number of samples, number of variables] where the 
     number of variables will be equal to 1 + the number of exogenous variables. Number of 
@@ -29,9 +31,10 @@ class TransformerDataset(Dataset):
     tgt_idx: The index position of the target variable in data. Data is a 2D tensor
     """
     
-    def __init__(self, data: torch.tensor, indices: list, encoder_sequence_len: int, decoder_sequence_len: int, tgt_sequence_len: int) -> None:
+    def __init__(self, task_type: str, data: torch.tensor, indices: list, encoder_sequence_len: int, decoder_sequence_len: int, tgt_sequence_len: int) -> None:
         super().__init__()
 
+        self.task_type = task_type
         self.data = data
         self.indices = indices
         self.encoder_sequence_len = encoder_sequence_len
@@ -64,16 +67,26 @@ class TransformerDataset(Dataset):
         
         # print("From __getitem__: sequence length = {}".format(len(sequence)))
 
-        src, tgt, tgt_y, tgt_p = self._get_src_tgt(sequence=sequence, encoder_sequence_len=self.encoder_sequence_len,
-            decoder_sequence_len=self.decoder_sequence_len, tgt_sequence_len=self.tgt_sequence_len)
+        if self.task_type == "MU":
+
+            src, tgt, tgt_y, tgt_p = self._get_src_tgt_mu(sequence=sequence, encoder_sequence_len=self.encoder_sequence_len,
+                decoder_sequence_len=self.decoder_sequence_len, tgt_sequence_len=self.tgt_sequence_len)
+        
+        elif self.task_type == "MM":
+
+            src, tgt, tgt_y, tgt_p = self._get_src_tgt_mm(sequence=sequence, encoder_sequence_len=self.encoder_sequence_len,
+                decoder_sequence_len=self.decoder_sequence_len, tgt_sequence_len=self.tgt_sequence_len)
+        
+        else:
+            raise ValueError("task_type must be either 'MU' or 'MM'")
         
         src_p = src # Used for plotting
 
-        src = self._crush_src(src=src)
+        # src = self._crush_src(src=src)
 
         return src, tgt, tgt_y, src_p, tgt_p
     
-    def _get_src_tgt(self, sequence: torch.Tensor, encoder_sequence_len: int, decoder_sequence_len: int, 
+    def _get_src_tgt_mu(self, sequence: torch.Tensor, encoder_sequence_len: int, decoder_sequence_len: int, 
                     tgt_sequence_len: int) -> Tuple[torch.tensor, torch.tensor, torch.tensor]:
 
         """
@@ -113,6 +126,50 @@ class TransformerDataset(Dataset):
 
         # the target sequence corresponding to the encoder input (src) in the same range for plotting purposes
         tgt_p = sequence[:encoder_sequence_len, -1:] # Select the target variable in the same range as the encoder input
+
+        return src, tgt, tgt_y.squeeze(-1), tgt_p # change size from [batch_size, tgt_seq_len, num_features] to [batch_size, tgt_seq_len] 
+        # tgt_y.squeeze(-1) is reverted in the test function with tgt_y.squeeze(2). Left as it is for now.
+    
+    def _get_src_tgt_mm(self, sequence: torch.Tensor, encoder_sequence_len: int, decoder_sequence_len: int, 
+                    tgt_sequence_len: int) -> Tuple[torch.tensor, torch.tensor, torch.tensor]:
+
+        """
+        Generate the src (encoder input), tgt (decoder input) and tgt_y (the target)
+        sequences from a sequence. 
+        ----------
+        Arguments:
+        sequence: tensor, a 1D tensor of length n where  n = encoder input length + target 
+            sequence length 
+        encoder_sequence_len: int, the desired length of the input to the transformer encoder
+        tgt_sequence_len: int, the desired length of the target sequence (the one against 
+            which the model output is compared)
+
+        Return: 
+        src: tensor, 1D, used as input to the transformer model
+        tgt: tensor, 1D, used as input to the transformer model
+        tgt_y: tensor, 1D, the target sequence against which the model output is compared
+            when computing loss. 
+        """
+        
+        assert len(sequence) == encoder_sequence_len + tgt_sequence_len, "Sequence length does not equal (input length + target length)"
+        
+        # encoder input. Selects all variables
+        src = sequence[:encoder_sequence_len, :]
+        
+        # decoder input. As per the paper, it must have the same dimension as the 
+        # target sequence, and it must contain the last values of src, and all
+        # values of tgt_y except the last (i.e. it must be shifted right by 1)
+        tgt = sequence[encoder_sequence_len-1:len(sequence)-1, :] 
+        
+        assert len(tgt) == tgt_sequence_len, "Length of tgt does not match target sequence length"
+
+        # The target sequence against which the model output will be compared to compute loss
+        tgt_y = sequence[-tgt_sequence_len:, :] # Select all variables one step ahead
+        
+        assert len(tgt_y) == tgt_sequence_len, "Length of tgt_y does not match target sequence length"
+
+        # the target sequence corresponding to the encoder input (src) in the same range for plotting purposes
+        tgt_p = sequence[:encoder_sequence_len, :] # Select all variables in the same range as the encoder input
 
         return src, tgt, tgt_y.squeeze(-1), tgt_p # change size from [batch_size, tgt_seq_len, num_features] to [batch_size, tgt_seq_len] 
         # tgt_y.squeeze(-1) is reverted in the test function with tgt_y.squeeze(2). Left as it is for now.

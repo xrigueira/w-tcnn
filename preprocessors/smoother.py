@@ -28,7 +28,9 @@ def smoother(station):
     # Normalize the data
     from sklearn.preprocessing import MinMaxScaler
     scaler = MinMaxScaler()
-    data.iloc[:, 1:-2] = scaler.fit_transform(data.iloc[:, 1:-2])
+    data.iloc[:, 1:-1] = scaler.fit_transform(data.iloc[:, 1:-1]) 
+    # The -1 in this file is a -2 in the other repos because the 'week' column is removed in this repo in filterer.py
+    # if I update all the other smoothers I would have to make changes in the main file too remplacing the -2 by -1.
 
     # Define the variables needed for smoothing
     window_size = 4
@@ -39,11 +41,11 @@ def smoother(station):
     from concurrent.futures import ProcessPoolExecutor
     with ProcessPoolExecutor() as executor:
         smoothed_columns = executor.map(smooth_column, 
-                                        [data[col] for col in data.columns[1:-2]],
-                                        [window_size] * (len(data.columns[1:-2])),
-                                        [stride] * (len(data.columns[1:-2])))
+                                        [data[col] for col in data.columns[1:-1]],
+                                        [window_size] * (len(data.columns[1:-1])),
+                                        [stride] * (len(data.columns[1:-1])))
         
-        for col, smoothed_values in zip(data.columns[1:-2], smoothed_columns):
+        for col, smoothed_values in zip(data.columns[1:-1], smoothed_columns):
             smoothed_data[col] = smoothed_values
 
     smoothed_data.to_csv(f'data/labeled_{station}_smo.csv', encoding='utf-8', sep=',', index=False)
