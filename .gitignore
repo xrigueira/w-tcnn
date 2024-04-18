@@ -1,6 +1,9 @@
 # Ignore the venv
 venv
 
+# Ignore the pychache
+__pycache__
+
 # Ignore the data
 data
 

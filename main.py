@@ -29,7 +29,7 @@ def train(dataloader, model, src_mask, memory_mask, tgt_mask, loss_function, opt
         # Compute prediction error
         pred, sa_weights_encoder, sa_weights, mha_weights = model(src=src, tgt=tgt, src_mask=src_mask, memory_mask=memory_mask, tgt_mask=tgt_mask)
         pred = pred.to(device)
-        loss = loss_function(pred, tgt_y.unsqueeze(2))
+        loss = loss_function(pred, tgt_y)
         
         # Backpropagation
         loss.backward()
@@ -58,7 +58,7 @@ def val(dataloader, model, src_mask, memory_mask, tgt_mask, loss_function, devic
             
             pred, sa_weights_encoder, sa_weights, mha_weights = model(src=src, tgt=tgt, src_mask=src_mask, memory_mask=memory_mask, tgt_mask=tgt_mask)
             pred = pred.to(device)
-            loss = loss_function(pred, tgt_y.unsqueeze(2))
+            loss = loss_function(pred, tgt_y)
             
             # Save results for plotting
             validation_loss.append(loss.item())
@@ -72,13 +72,18 @@ def val(dataloader, model, src_mask, memory_mask, tgt_mask, loss_function, devic
 # Define inference step
 def test(dataloader, model, src_mask, memory_mask, tgt_mask, device):
     
+    # Get tgt for plotting purposes
+    tgt_plots = torch.zeros(len(dataloader), output_sequence_len, len(tgt_variables))
+    for i, (src, tgt, tgt_y, src_p, tgt_p) in enumerate(dataloader):
+        tgt_plots[i] = tgt
+    
     # Get ground truth
-    tgt_y_truth = torch.zeros(len(dataloader))
+    tgt_y_truth = torch.zeros(len(dataloader), output_sequence_len, len(tgt_variables))
     for i, (src, tgt, tgt_y, src_p, tgt_p) in enumerate(dataloader):
         tgt_y_truth[i] = tgt_y
 
     # Define tensor to store the predictions
-    tgt_y_hat = torch.zeros((len(dataloader)), device=device)
+    tgt_y_hat = torch.zeros((len(dataloader)), output_sequence_len, len(tgt_variables), device=device)
 
     # Define list to store the attention weights
     all_sa_weights_encoder_inference = []
@@ -93,9 +98,9 @@ def test(dataloader, model, src_mask, memory_mask, tgt_mask, device):
             src, tgt, tgt_y, src_p, tgt_p = src.to(device), tgt.to(device), tgt_y.to(device), src_p.to(device), tgt_p.to(device)
 
             pred, sa_weights_encoder, sa_weights, mha_weights = model(src=src, tgt=tgt, src_mask=src_mask, memory_mask=memory_mask, tgt_mask=tgt_mask)
-            all_sa_weights_encoder_inference.append(sa_weights_encoder)
-            all_sa_weights_inference.append(sa_weights)
-            all_mha_weights_inference.append(mha_weights)
+            # all_sa_weights_encoder_inference.append(sa_weights_encoder)
+            # all_sa_weights_inference.append(sa_weights)
+            # all_mha_weights_inference.append(mha_weights)
             pred = pred.to(device)
 
             # # Save src, tgt and tgt_y, and pred for plotting purposes
@@ -115,19 +120,17 @@ def test(dataloader, model, src_mask, memory_mask, tgt_mask, device):
 
     tgt_y_truth, tgt_y_hat = tgt_y_truth.numpy(), tgt_y_hat.numpy()
 
-    # Save ground truth and predictions
-    # np.save('tgt_y_truth.npy', tgt_y_truth, allow_pickle=False, fix_imports=False)
-    # np.save('tgt_y_hat.npy', tgt_y_hat, allow_pickle=False, fix_imports=False)
+    # Save tgt_plots, ground truth and predictions
+    np.save('tgt_plots.npy', tgt_plots, allow_pickle=False, fix_imports=False)
+    np.save('tgt_y_truth.npy', tgt_y_truth, allow_pickle=False, fix_imports=False)
+    np.save('tgt_y_hat.npy', tgt_y_hat, allow_pickle=False, fix_imports=False)
     
-    return tgt_y_truth, tgt_y_hat
+    return tgt_plots, tgt_y_truth, tgt_y_hat
 
 if __name__ == '__main__':
     
     # Define seed
     torch.manual_seed(0)
-
-    # TODO. The number and names of the variables that go in are defined below. Same is the length of the output sequence and the inputs. HOWEVER, review the dataset class and transformer class
-    # to make sure that everything makes sense.
 
     station = 901
     task_type = 'MM' # MU for multivariate predicts univariate, MM for multivariate predicts multivariate
@@ -165,12 +168,12 @@ if __name__ == '__main__':
     in_features_decoder_linear_layer = 256
     max_sequence_len = encoder_sequence_len
     window_size = encoder_sequence_len + output_sequence_len # used to slice data into sub-sequences
-    step_size = 1 # Step size, i.e. how many time steps does the moving window move at each step
+    step_size = 96 # Step size, i.e. how many time steps does the moving window move at each step
     batch_first = True
 
     # Run parameters
     lr = 0.001
-    epochs = 500
+    epochs = 2
 
     # Get device
     device = ('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
@@ -224,89 +227,78 @@ if __name__ == '__main__':
     testing_data = ds.TransformerDataset(task_type=task_type, data=torch.tensor(data[input_variables].values).float(),
                                         indices=testing_indices, encoder_sequence_len=encoder_sequence_len, 
                                         decoder_sequence_len=decoder_sequence_len, tgt_sequence_len=output_sequence_len)
+
+    # Set up dataloaders
+    training_val_data = training_data + validation_data # For testing puporses
+    training_data = DataLoader(training_data, batch_size, shuffle=False)
+    validation_data = DataLoader(validation_data, batch_size, shuffle=False)
+    testing_data = DataLoader(testing_data, batch_size=1, shuffle=False)
+    training_val_data = DataLoader(training_val_data, batch_size=1, shuffle=False) # For testing puporses
     
-    src, tgt, tgt_y, src_p, tgt_p = training_data[0]
-    # Continue reviewing that these data structures contain the correct data
-    print(f"src shape: {src}")
-    print(f"tgt shape: {tgt.shape}")
-    print(f"tgt_y shape: {tgt_y.shape}")
-    print(f"src_p shape: {src_p.shape}")
-    print(f"tgt_p shape: {tgt_p.shape}")
+    # # Update the encoder sequence length to its crushed version
+    # encoder_sequence_len = crushed_encoder_sequence_len
 
-    # # Set up dataloaders
-    # training_val_data = training_data + validation_data # For testing puporses
-    # training_data = DataLoader(training_data, batch_size, shuffle=False)
-    # validation_data = DataLoader(validation_data, batch_size, shuffle=False)
-    # testing_data = DataLoader(testing_data, batch_size=1, shuffle=False)
-    # training_val_data = DataLoader(training_val_data, batch_size=1, shuffle=False) # For testing puporses
+    # Instantiate the transformer model and send it to device
+    model = tst.TimeSeriesTransformer(input_size=len(src_variables), decoder_sequence_len=decoder_sequence_len, 
+                                    batch_first=batch_first, d_model=d_model, n_encoder_layers=n_encoder_layers, 
+                                    n_decoder_layers=n_decoder_layers, n_heads=n_heads, dropout_encoder=0.2, 
+                                    dropout_decoder=0.2, dropout_pos_encoder=0.1, dim_feedforward_encoder=in_features_encoder_linear_layer, 
+                                    dim_feedforward_decoder=in_features_decoder_linear_layer, num_src_features=len(src_variables), 
+                                    num_predicted_features=len(tgt_variables)).to(device)
+
+    # Send model to device
+    model.to(device)
     
-    # # # Update the encoder sequence length to its crushed version
-    # # encoder_sequence_len = crushed_encoder_sequence_len
-
-    # # Instantiate the transformer model and send it to device
-    # model = tst.TimeSeriesTransformer(input_size=len(src_variables), decoder_sequence_len=decoder_sequence_len, 
-    #                                 batch_first=batch_first, d_model=d_model, n_encoder_layers=n_encoder_layers, 
-    #                                 n_decoder_layers=n_decoder_layers, n_heads=n_heads, dropout_encoder=0.2, 
-    #                                 dropout_decoder=0.2, dropout_pos_encoder=0.1, dim_feedforward_encoder=in_features_encoder_linear_layer, 
-    #                                 dim_feedforward_decoder=in_features_decoder_linear_layer, num_src_features=len(src_variables), 
-    #                                 num_predicted_features=len(tgt_variables)).to(device)
-
-    # # Send model to device
-    # model.to(device)
+    # Print model and number of parameters
+    print('Defined model:\n', model)
+    utils.count_parameters(model)
     
-    # # Print model and number of parameters
-    # print('Defined model:\n', model)
-    # utils.count_parameters(model)
+    # Make src mask for the decoder with size
+    # [batch_size*n_heads, output_sequence_length, encoder_sequence_len]
+    src_mask = utils.masker(dim1=encoder_sequence_len, dim2=encoder_sequence_len).to(device)
     
-    # # Make src mask for the decoder with size
-    # # [batch_size*n_heads, output_sequence_length, encoder_sequence_len]
-    # src_mask = utils.masker(dim1=encoder_sequence_len, dim2=encoder_sequence_len).to(device)
-    # # src_mask = utils.generate_square_subsequent_mask(size=encoder_sequence_len).to(device)
+    # Make the memory mask for the decoder
+    memory_mask = None
+
+    # Make tgt mask for decoder with size
+    # [batch_size*n_heads, output_sequence_length, output_sequence_length]
+    tgt_mask = utils.masker(dim1=output_sequence_len, dim2=output_sequence_len).to(device)
     
-    # # Make the memory mask for the decoder
-    # # memory_mask = utils.unmasker(dim1=output_sequence_len, dim2=encoder_sequence_len).to(device)
-    # memory_mask = None
+    # Define optimizer and loss function
+    loss_function = nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-    # # Make tgt mask for decoder with size
-    # # [batch_size*n_heads, output_sequence_length, output_sequence_length]
-    # tgt_mask = utils.masker(dim1=output_sequence_len, dim2=output_sequence_len).to(device)
-    # # tgt_mask = utils.generate_square_subsequent_mask(size=decoder_sequence_len).to(device)
-    
-    # # Define optimizer and loss function
-    # loss_function = nn.MSELoss()
-    # optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    # Instantiate early stopping
+    early_stopping = utils.EarlyStopping(patience=30, verbose=True)
 
-    # # Instantiate early stopping
-    # early_stopping = utils.EarlyStopping(patience=30, verbose=True)
+    # Update model in the training process and test it
+    start_time = time.time()
+    df_training = pd.DataFrame(columns=('epoch', 'loss_train'))
+    df_validation = pd.DataFrame(columns=('epoch', 'loss_val'))
+    for t in range(epochs): # epochs is defined in the hyperparameters section above
+        print(f"Epoch {t+1}\n-------------------------------")
+        train(training_data, model, src_mask, memory_mask, tgt_mask, loss_function, optimizer, device, df_training, epoch=t)
+        epoch_val_loss = val(validation_data, model, src_mask, memory_mask, tgt_mask, loss_function, device, df_validation, epoch=t)
 
-    # # Update model in the training process and test it
-    # start_time = time.time()
-    # df_training = pd.DataFrame(columns=('epoch', 'loss_train'))
-    # df_validation = pd.DataFrame(columns=('epoch', 'loss_val'))
-    # for t in range(epochs): # epochs is defined in the hyperparameters section above
-    #     print(f"Epoch {t+1}\n-------------------------------")
-    #     train(training_data, model, src_mask, memory_mask, tgt_mask, loss_function, optimizer, device, df_training, epoch=t)
-    #     epoch_val_loss = val(validation_data, model, src_mask, memory_mask, tgt_mask, loss_function, device, df_validation, epoch=t)
-
-    #     # Early stopping
-    #     early_stopping(epoch_val_loss, model, path='checkpoints')
-    #     if early_stopping.early_stop:
-    #         print("Early stopping")
-    #         break
+        # Early stopping
+        early_stopping(epoch_val_loss, model, path='checkpoints')
+        if early_stopping.early_stop:
+            print("Early stopping")
+            break
         
-    # print("Done! ---Execution time: %s seconds ---" % (time.time() - start_time))
+    print("Done! ---Execution time: %s seconds ---" % (time.time() - start_time))
 
-    # # # Save the model
-    # # torch.save(model, "models/model.pth")
-    # # print("Saved PyTorch entire model to models/model.pth")
+    # # Save the model
+    # torch.save(model, "models/model.pth")
+    # print("Saved PyTorch entire model to models/model.pth")
 
-    # # # Load the model
-    # # model = torch.load("models/model.pth").to(device)
-    # # print('Loaded PyTorch model from models/model.pth')
+    # # Load the model
+    # model = torch.load("models/model.pth").to(device)
+    # print('Loaded PyTorch model from models/model.pth')
 
-    # # Inference
-    # tgt_y_truth_train_val, tgt_y_hat_train_val = test(training_val_data, model, src_mask, memory_mask, tgt_mask, device)
-    # tgt_y_truth_test, tgt_y_hat_test = test(testing_data, model, src_mask, memory_mask, tgt_mask, device)
+    # Inference
+    tgt_plots, tgt_y_truth_train_val, tgt_y_hat_train_val = test(training_val_data, model, src_mask, memory_mask, tgt_mask, device)
+    tgt_plots, tgt_y_truth_test, tgt_y_hat_test = test(testing_data, model, src_mask, memory_mask, tgt_mask, device)
     
     # # Save results
     # utils.logger(run=run, batches=batch_size, d_model=d_model, n_heads=n_heads,

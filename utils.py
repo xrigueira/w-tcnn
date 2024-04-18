@@ -207,9 +207,29 @@ def get_nash_sutcliffe_efficiency(observed, modeled):
     
     return nse
 
+def get_multivariate_nash_sutcliffe_efficiency(multivariate_observed, multivariate_modeled):
+
+    multivariate_nse = []
+    for i in range(multivariate_observed.shape[2]):
+        nse = get_nash_sutcliffe_efficiency(multivariate_observed[:, :, i].flatten(), 
+                                            multivariate_modeled[:, :, i].flatten())
+        multivariate_nse.append(nse)
+    
+    return multivariate_nse
+
 # Define function to calculate the percent bias
 def get_pbias(observed, modeled):
     return np.sum(observed - modeled) / np.sum(observed) * 100
+
+def get_multivariate_pbias(multivariate_observed, multivariate_modeled):
+
+    multivariate_pbias = []
+    for i in range(multivariate_observed.shape[2]):
+        pbias = get_pbias(multivariate_observed[:, :, i].flatten(), 
+                        multivariate_modeled[:, :, i].flatten())
+        multivariate_pbias.append(pbias)
+    
+    return multivariate_pbias
 
 # Define function to calculate the Kling-Gupta efficiency
 def get_kge(observed, modeled):
@@ -219,10 +239,31 @@ def get_kge(observed, modeled):
 
     return 1 - np.sqrt((r - 1)**2 + (alpha - 1)**2 + (beta - 1)**2)
 
+def get_multivariate_kge(multivariate_modeled, multivariate_observed):
+
+    multivariate_kge = []
+    for i in range(multivariate_observed.shape[2]):
+        kge = get_kge(multivariate_observed[:, :, i].flatten(), 
+                    multivariate_modeled[:, :, i].flatten())
+        multivariate_kge.append(kge)
+    
+    return multivariate_kge
+
+def get_multivariate_rmse(multivariate_modeled, multivariate_observed):
+
+    multivariate_rmse = []
+    for i in range(multivariate_observed.shape[2]):
+        rmse = np.sqrt(mean_squared_error(multivariate_observed[:, :, i].flatten(), 
+                                        multivariate_modeled[:, :, i].flatten()))
+        multivariate_rmse.append(rmse)
+    
+    return multivariate_rmse
+
 def metrics(truth, hat, phase):
     """
     Calculate the Nash-Sutcliffe efficiency, root mean square error,
-    percent bias, and Kling-Gupta efficiency of the model's predictions.
+    percent bias, and Kling-Gupta efficiency by for each variate of
+    the model's predictions.
     ----------
     Arguments:
     truth (np.array): np.array, the observed values
@@ -230,16 +271,16 @@ def metrics(truth, hat, phase):
     phase (str): the phase of the data. Must be one of "train", "val", or "test"
     
     Returns:
-    nse (float): Nash-Sutcliffe efficiency
-    rmse (float): root mean square error
-    pbias (float): percent bias
-    kge (float): Kling-Gupta efficiency
+    nse (list): Nash-Sutcliffe efficiency
+    rmse (list): root mean square error
+    pbias (list): percent bias
+    kge (list): Kling-Gupta efficiency
     """
     
-    nse = get_nash_sutcliffe_efficiency(truth, hat)
-    rmse = np.sqrt(mean_squared_error(truth, hat))
-    pbias = get_pbias(truth, hat)
-    kge = get_kge(truth, hat)
+    nse = get_multivariate_nash_sutcliffe_efficiency(truth, hat)
+    rmse = get_multivariate_rmse(truth, hat)
+    pbias = get_multivariate_pbias(truth, hat)
+    kge = get_multivariate_kge(truth, hat)
     
     print(f'\n-- {phase}  results')
     print(f'Nash-Sutcliffe efficiency: {nse}')

@@ -80,7 +80,7 @@ class TransformerDataset(Dataset):
         else:
             raise ValueError("task_type must be either 'MU' or 'MM'")
         
-        src_p = src # Used for plotting
+        src_p = src # Used for plotting. Unused when task_type is MM
 
         # src = self._crush_src(src=src)
 
@@ -159,7 +159,7 @@ class TransformerDataset(Dataset):
         # decoder input. As per the paper, it must have the same dimension as the 
         # target sequence, and it must contain the last values of src, and all
         # values of tgt_y except the last (i.e. it must be shifted right by 1)
-        tgt = sequence[encoder_sequence_len-1:len(sequence)-1, :] 
+        tgt = sequence[(encoder_sequence_len-decoder_sequence_len):encoder_sequence_len, :] 
         
         assert len(tgt) == tgt_sequence_len, "Length of tgt does not match target sequence length"
 
@@ -168,7 +168,7 @@ class TransformerDataset(Dataset):
         
         assert len(tgt_y) == tgt_sequence_len, "Length of tgt_y does not match target sequence length"
 
-        # the target sequence corresponding to the encoder input (src) in the same range for plotting purposes
+        # Unused in when task_type is MM. the target sequence corresponding to the encoder input (src) in the same range for plotting purposes
         tgt_p = sequence[:encoder_sequence_len, :] # Select all variables in the same range as the encoder input
 
         return src, tgt, tgt_y.squeeze(-1), tgt_p # change size from [batch_size, tgt_seq_len, num_features] to [batch_size, tgt_seq_len] 
