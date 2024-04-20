@@ -290,30 +290,52 @@ def metrics(truth, hat, phase):
 
     return nse, rmse, pbias, kge
 
-def plots(truth, hat, phase, run):
+def plots(tgt, truth, hat, tgt_percentage, multiple, station, phase, run):
     
     """
     Plot the observed and predicted values
     ----------
     Arguments:
-    truth (np.array): np.array, the observed values
+    tgt (np.array): np.array, the ground truth values before the prediction
+    truth (np.array): np.array, the observed values during the prediction
     hat (np.array): the model's predictions
+    tgt_percentage (float): the percentage of the tgt values to plot
+    multiple (int): the multiple of the tgt values to plot
+    station (int): the station number
     phase (str): the phase of the data. Must be one of "train", "val", or "test"
+    run (int): the run number defined by the user
 
     Returns:
     None
     """
 
-    plt.figure();plt.clf()
-    plt.plot(truth, label='observed')
-    plt.plot(hat, label='predicted')
-    plt.title(f'{phase} results')
-    plt.xlabel(r'time (days)')
-    plt.ylabel(r'y')
-    plt.legend()
-    # plt.show()
+    for i in range(len(tgt)):
+        
+        if i % multiple == 0:
 
-    plt.savefig(f'results/run_{run}/{phase}.png', dpi=300)
+            ground_truth = np.concatenate((tgt[-int(len(tgt)*tgt_percentage):], truth))
+
+            # Plot the truth and the prediction
+            colors_ground_truth = ['red', 'dodgerblue', 'mediumpurple', 'dimgrey', 'chocolate', 'goldenrod', 'green']
+            colors_hat = ['salmon', 'lightskyblue', 'plum', 'darkgrey', 'orange', 'gold', 'yellowgreen']
+            labels = ['am', 'co', 'do', 'ph', 'pr', 'tu', 'wt']
+
+            # Loop over each column of the truth
+            for i in range(ground_truth.shape[1]):
+                plt.plot(ground_truth[:, i], label=f'{labels[i]}', color=colors_ground_truth[i])
+
+            # Loop over each column of the prediction and plot it starting when the concatenated part of tgt ends
+            tgt_length = int(len(tgt)*tgt_percentage)
+            for i in range(hat.shape[1]):
+                plt.plot(range(tgt_length, tgt_length + hat.shape[0]), hat[:, i], color=colors_hat[i])
+
+            plt.title(f'Results for the first instance of station {station}')
+            plt.xlabel(r'time (15 min)')
+            plt.ylabel(r'y')
+            plt.legend()
+            plt.show()
+
+            # plt.savefig(f'results/run_{run}/{phase}.png', dpi=300)
 
 def logger(run, batches, d_model, n_heads, encoder_layers, decoder_layers, dim_ll_encoder, dim_ll_decoder, lr, epochs):
 

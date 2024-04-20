@@ -297,8 +297,8 @@ if __name__ == '__main__':
     # print('Loaded PyTorch model from models/model.pth')
 
     # Inference
-    tgt_plots, tgt_y_truth_train_val, tgt_y_hat_train_val = test(training_val_data, model, src_mask, memory_mask, tgt_mask, device)
-    tgt_plots, tgt_y_truth_test, tgt_y_hat_test = test(testing_data, model, src_mask, memory_mask, tgt_mask, device)
+    tgt_plots_train_val, tgt_y_truth_train_val, tgt_y_hat_train_val = test(training_val_data, model, src_mask, memory_mask, tgt_mask, device)
+    tgt_plots_test, tgt_y_truth_test, tgt_y_hat_test = test(testing_data, model, src_mask, memory_mask, tgt_mask, device)
     
     # # Save results
     # utils.logger(run=run, batches=batch_size, d_model=d_model, n_heads=n_heads,
@@ -318,9 +318,11 @@ if __name__ == '__main__':
 
     # plt.savefig(f'results/run_{run}/loss.png', dpi=300)
 
-    # # Plot testing results
-    # utils.plots(tgt_y_truth_train_val, tgt_y_hat_train_val, 'train_val', run=run)
-    # utils.plots(tgt_y_truth_test, tgt_y_hat_test, 'test', run=run)
+    # Plot testing results
+    # utils.plots(tgt_plots_train_val, tgt_y_truth_train_val, tgt_y_hat_train_val, tgt_percentage=0.2,
+    #             multiple=100, station=station, phase='train_val', run=run)
+    # utils.plots(tgt_plots_test, tgt_y_truth_test, tgt_y_hat_test, tgt_percentage=0.2,
+    #             multiple=100, station=station, phase='test', run=run)
 
     # # Metrics
     # utils.metrics(tgt_y_truth_train_val, tgt_y_hat_train_val, 'train_val')
