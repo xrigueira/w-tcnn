@@ -1,579 +1,329 @@
-import math
+import time
+import datetime
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.style.use('ggplot')
+
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+from torch.utils.data import DataLoader
 
-from typing import Optional, Any, Union, Callable, Tuple
-from torch import Tensor
+import utils
+import dataset as ds
+import models.transformer as tst
 
-class PositionalEncoder(nn.Module):
+# Define the training step
+def train(dataloader, model, src_mask, memory_mask, tgt_mask, loss_function, optimizer, device, df_training, epoch):
     
-    """
-    The authors of the original transformer paper describe very succinctly what 
-    the positional encoding layer does and why it is needed:
+    size = len(dataloader.dataset)
+    model.train()
+    training_loss = [] # For plotting purposes
+    for i, batch in enumerate(dataloader):
+        src, tgt, tgt_y, src_p, tgt_p = batch
+        src, tgt, tgt_y, src_p, tgt_p = src.to(device), tgt.to(device), tgt_y.to(device), src_p.to(device), tgt_p.to(device)
+
+        # Zero out gradients for every batch
+        optimizer.zero_grad()
+        
+        # Compute prediction error
+        pred, sa_weights_encoder, sa_weights, mha_weights = model(src=src, tgt=tgt, src_mask=src_mask, memory_mask=memory_mask, tgt_mask=tgt_mask)
+        pred = pred.to(device)
+        loss = loss_function(pred, tgt_y)
+        
+        # Backpropagation
+        loss.backward()
+        optimizer.step()
+        
+        # Save results for plotting
+        training_loss.append(loss.item())
+        epoch_train_loss = np.mean(training_loss)
+        df_training.loc[epoch] = [epoch, epoch_train_loss]
+
+        # if i % 20 == 0:
+        #     print('Current batch', i)
+        #     loss, current = loss.item(), (i + 1) * len(src)
+        #     print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
+
+# Define testing step
+def val(dataloader, model, src_mask, memory_mask, tgt_mask, loss_function, device, df_validation, epoch):
     
-    "Since our model contains no recurrence and no convolution, in order for the 
-    model to make use of the order of the sequence, we must inject some 
-    information about the relative or absolute position of the tokens in the 
-    sequence." (Vaswani et al, 2017)
-    
-    Adapted from: https://pytorch.org/tutorials/beginner/transformer_tutorial.html
-    """
-    
-    def __init__(self, dropout: float, max_seq_len: int, d_model: int, batch_first: bool=True) -> None:
-        super().__init__()
-        self.d_model = d_model # The dimension of the output of the sub-layers in the model
-        self.dropout = nn.Dropout(p=dropout) 
-        self.batch_first = batch_first
-        
-        position = torch.arange(max_seq_len).unsqueeze(1)
-        
-        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
-        
-        # PE(pos,2i)   = sin(pos/(10000^(2i/d_model)))
-        # PE(pos,2i+1) = cos(pos/(10000^(2i/d_model)))
-        
-        if self.batch_first:
-            pe = torch.zeros(1, max_seq_len, d_model)
+    num_batches = len(dataloader)
+    model.eval()
+    validation_loss = [] # For plotting purposes
+    with torch.no_grad():
+        for batch in dataloader:
+            src, tgt, tgt_y, src_p, tgt_p = batch
+            src, tgt, tgt_y, src_p, tgt_p = src.to(device), tgt.to(device), tgt_y.to(device), src_p.to(device), tgt_p.to(device)
             
-            pe[0, :, 0::2] = torch.sin(position * div_term)
+            pred, sa_weights_encoder, sa_weights, mha_weights = model(src=src, tgt=tgt, src_mask=src_mask, memory_mask=memory_mask, tgt_mask=tgt_mask)
+            pred = pred.to(device)
+            loss = loss_function(pred, tgt_y)
             
-            pe[0, :, 1::2] = torch.cos(position * div_term)
-        
-        else:
-            pe = torch.zeros(max_seq_len, 1, d_model)
-        
-            pe[:, 0, 0::2] = torch.sin(position * div_term)
-        
-            pe[:, 0, 1::2] = torch.cos(position * div_term)
-        
-        self.register_buffer('pe', pe)
+            # Save results for plotting
+            validation_loss.append(loss.item())
+            epoch_val_loss = np.mean(validation_loss)
+            df_validation.loc[epoch] = [epoch, epoch_val_loss]
     
-    def forward(self, x: Tensor) -> Tensor:
-        """
-        Args:
-        x: Tensor, shape [batch_size, enc_seq_len, dim_val] or 
-                        [enc_seq_len, batch_size, dim_val]
-        """
-        if self.batch_first:
-            x = x + self.pe[:,:x.size(1)]
-        else:
-            x = x + self.pe[:x.size(0)]
+    loss /= num_batches
+    # print(f"Avg test loss: {loss:>8f}")
+    return epoch_val_loss
 
-        return self.dropout(x)
+# Define inference step
+def test(dataloader, model, src_mask, memory_mask, tgt_mask, device):
     
-class customTransformerEncoderLayer(nn.Module):
+    # Get tgt for plotting purposes
+    tgt_plots = torch.zeros(len(dataloader), output_sequence_len, len(tgt_variables))
+    for i, (src, tgt, tgt_y, src_p, tgt_p) in enumerate(dataloader):
+        tgt_plots[i] = tgt
     
-    """
-    This class implements a custom encoder layer made up of self-attention and feedforward network.
+    # Get ground truth
+    tgt_y_truth = torch.zeros(len(dataloader), output_sequence_len, len(tgt_variables))
+    for i, (src, tgt, tgt_y, src_p, tgt_p) in enumerate(dataloader):
+        tgt_y_truth[i] = tgt_y
+
+    # Define tensor to store the predictions
+    tgt_y_hat = torch.zeros((len(dataloader)), output_sequence_len, len(tgt_variables), device=device)
+
+    # Define list to store the attention weights
+    all_sa_weights_encoder_inference = []
+    all_sa_weights_inference = []
+    all_mha_weights_inference = []
     
-    This standard encoder layer is based on the paper "Attention Is All You Need".
-    Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez,
-    Lukasz Kaiser, and Illia Polosukhin. 2017. Attention is all you need. In Advances in
-    Neural Information Processing Systems, pages 6000-6010. It has been modified to return
-    the attention weights.
-    ----------
-    Args:
-        d_model: the number of expected features in the input (required).
-        nhead: the number of heads in the multiheadattention models (required).
-        dim_feedforward: the dimension of the feedforward network model (default=2048).
-        dropout: the dropout value (default=0.1).
-        activation: the activation function of the intermediate layer, can be a string
-            ("relu" or "gelu") or a unary callable. Default: relu
-        layer_norm_eps: the eps value in layer normalization components (default=1e-5).
-        batch_first: If ``True``, then the input and output tensors are provided
-            as (batch, seq, feature). Default: ``False`` (seq, batch, feature).
-        norm_first: if ``True``, layer norm is done prior to attention and feedforward
-            operations, respectively. Otherwise it's done after. Default: ``False`` (after).
-        bias: If set to ``False``, ``Linear`` and ``LayerNorm`` layers will not learn an additive
-            bias. Default: ``True``.
+    # Perform inference
+    model.eval()
+    with torch.no_grad():
+        for i, sample in enumerate(dataloader):
+            src, tgt, tgt_y, src_p, tgt_p = sample
+            src, tgt, tgt_y, src_p, tgt_p = src.to(device), tgt.to(device), tgt_y.to(device), src_p.to(device), tgt_p.to(device)
+
+            pred, sa_weights_encoder, sa_weights, mha_weights = model(src=src, tgt=tgt, src_mask=src_mask, memory_mask=memory_mask, tgt_mask=tgt_mask)
+            # all_sa_weights_encoder_inference.append(sa_weights_encoder)
+            # all_sa_weights_inference.append(sa_weights)
+            # all_mha_weights_inference.append(mha_weights)
+            pred = pred.to(device)
+
+            # # Save src, tgt and tgt_y, and pred for plotting purposes
+            # np.save(f'results/src_p_{i}.npy', src_p.cpu(), allow_pickle=False, fix_imports=False)
+            # np.save(f'results/tgt_p_{i}.npy', tgt_p.cpu(), allow_pickle=False, fix_imports=False)
+            # np.save(f'results/tgt_y_hat_{i}.npy', pred.cpu(), allow_pickle=False, fix_imports=False)
+            
+            tgt_y_hat[i] = pred
     
-    Returns:
-        x: encoder output.
-        sa_weights: self-attention weights.
-    """
-
-    __constants__ = ['norm_first']
-
-    def __init__(self, d_model: int, nhead: int, dim_feedforward: int = 2048, dropout: float = 0.1,
-                activation: Union[str, Callable[[Tensor], Tensor]] = F.relu,
-                layer_norm_eps: float = 1e-5, batch_first: bool = False, norm_first: bool = False,
-                bias: bool = True, device=None, dtype=None) -> None:
-        factory_kwargs = {'device': device, 'dtype': dtype}
-        super().__init__()
-        
-        # Define objects to store custom weights
-        self._sa_weights = None
-
-        self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout,
-                                            bias=bias, batch_first=batch_first,
-                                            **factory_kwargs)
-        # Implementation of Feedforward model
-        self.linear1 = nn.Linear(d_model, dim_feedforward, bias=bias, **factory_kwargs)
-        self.dropout = nn.Dropout(dropout)
-        self.linear2 = nn.Linear(dim_feedforward, d_model, bias=bias, **factory_kwargs)
-
-        self.norm_first = norm_first
-        self.norm1 = nn.LayerNorm(d_model, eps=layer_norm_eps, bias=bias, **factory_kwargs)
-        self.norm2 = nn.LayerNorm(d_model, eps=layer_norm_eps, bias=bias, **factory_kwargs)
-        self.dropout1 = nn.Dropout(dropout)
-        self.dropout2 = nn.Dropout(dropout)
-
-        # Legacy string support for activation function.
-        if isinstance(activation, str):
-            activation = nn._get_activation_fn(activation)
-
-        # We can't test self.activation in forward() in TorchScript,
-        # so stash some information about it instead.
-        if activation is F.relu or isinstance(activation, torch.nn.ReLU):
-            self.activation_relu_or_gelu = 1
-        elif activation is F.gelu or isinstance(activation, torch.nn.GELU):
-            self.activation_relu_or_gelu = 2
-        else:
-            self.activation_relu_or_gelu = 0
-        self.activation = activation
-
-    def __setstate__(self, state):
-        super().__setstate__(state)
-        if not hasattr(self, 'activation'):
-            self.activation = F.relu
+    # # Save inference attention for the last step
+    # np.save('results/all_sa_encoder_weights.npy', np.stack([sa_weight_encoder.cpu().numpy() for sa_weight_encoder in all_sa_weights_encoder_inference]), allow_pickle=False, fix_imports=False)
+    # np.save('results/all_sa_weights.npy', np.stack([sa_weight.cpu().numpy() for sa_weight in all_sa_weights_inference]), allow_pickle=False, fix_imports=False)
+    # np.save('results/all_mha_weights.npy', np.stack([mha_weight.cpu().numpy() for mha_weight in all_mha_weights_inference]), allow_pickle=False, fix_imports=False)
     
-    def forward(
-            self,
-            src: Tensor,
-            src_mask: Optional[Tensor] = None,
-            src_key_padding_mask: Optional[Tensor] = None,
-            is_causal: bool = False) -> Tuple[Tensor, Optional[Tensor]]:
-        r"""Pass the input through the encoder layer.
+    # Pass target_y_hat to cpu for plotting purposes
+    tgt_y_hat = tgt_y_hat.cpu()
 
-        Args:
-            src: the sequence to the encoder layer (required).
-            src_mask: the mask for the src sequence (optional).
-            src_key_padding_mask: the mask for the src keys per batch (optional).
-            is_causal: If specified, applies a causal mask as ``src mask``.
-                Default: ``False``.
-                Warning:
-                ``is_causal`` provides a hint that ``src_mask`` is the
-                causal mask. Providing incorrect hints can result in
-                incorrect execution, including forward and backward
-                compatibility.
+    tgt_y_truth, tgt_y_hat = tgt_y_truth.numpy(), tgt_y_hat.numpy()
 
-        Shape:
-            see the docs in Transformer class.
-        """
-        src_key_padding_mask = F._canonical_mask(
-            mask=src_key_padding_mask,
-            mask_name="src_key_padding_mask",
-            other_type=F._none_or_dtype(src_mask),
-            other_name="src_mask",
-            target_type=src.dtype
-        )
-
-        src_mask = F._canonical_mask(
-            mask=src_mask,
-            mask_name="src_mask",
-            other_type=None,
-            other_name="",
-            target_type=src.dtype,
-            check_other=False,
-        )
-
-        # # see Fig. 1 of https://arxiv.org/pdf/2002.04745v1.pdf
-        # why_not_sparsity_fast_path = ''
-        # if not src.dim() == 3:
-        #     why_not_sparsity_fast_path = f"input not batched; expected src.dim() of 3 but got {src.dim()}"
-        # elif self.training:
-        #     why_not_sparsity_fast_path = "training is enabled"
-        # elif not self.self_attn.batch_first :
-        #     why_not_sparsity_fast_path = "self_attn.batch_first was not True"
-        # elif not self.self_attn._qkv_same_embed_dim :
-        #     why_not_sparsity_fast_path = "self_attn._qkv_same_embed_dim was not True"
-        # elif not self.activation_relu_or_gelu:
-        #     why_not_sparsity_fast_path = "activation_relu_or_gelu was not True"
-        # elif not (self.norm1.eps == self.norm2.eps):
-        #     why_not_sparsity_fast_path = "norm1.eps is not equal to norm2.eps"
-        # elif src.is_nested and (src_key_padding_mask is not None or src_mask is not None):
-        #     why_not_sparsity_fast_path = "neither src_key_padding_mask nor src_mask are not supported with NestedTensor input"
-        # elif self.self_attn.num_heads % 2 == 1:
-        #     why_not_sparsity_fast_path = "num_head is odd"
-        # elif torch.is_autocast_enabled():
-        #     why_not_sparsity_fast_path = "autocast is enabled"
-        # if not why_not_sparsity_fast_path:
-        #     tensor_args = (
-        #         src,
-        #         self.self_attn.in_proj_weight,
-        #         self.self_attn.in_proj_bias,
-        #         self.self_attn.out_proj.weight,
-        #         self.self_attn.out_proj.bias,
-        #         self.norm1.weight,
-        #         self.norm1.bias,
-        #         self.norm2.weight,
-        #         self.norm2.bias,
-        #         self.linear1.weight,
-        #         self.linear1.bias,
-        #         self.linear2.weight,
-        #         self.linear2.bias,
-        #     )
-
-        #     # We have to use list comprehensions below because TorchScript does not support
-        #     # generator expressions.
-        #     _supported_device_type = ["cpu", "cuda", torch.utils.backend_registration._privateuse1_backend_name]
-        #     if torch.overrides.has_torch_function(tensor_args):
-        #         why_not_sparsity_fast_path = "some Tensor argument has_torch_function"
-        #     elif not all((x.device.type in _supported_device_type) for x in tensor_args):
-        #         why_not_sparsity_fast_path = ("some Tensor argument's device is neither one of "
-        #                                     f"{_supported_device_type}")
-        #     elif torch.is_grad_enabled() and any(x.requires_grad for x in tensor_args):
-        #         why_not_sparsity_fast_path = ("grad is enabled and at least one of query or the "
-        #                                     "input/output projection weights or biases requires_grad")
-
-        #     if not why_not_sparsity_fast_path:
-        #         merged_mask, mask_type = self.self_attn.merge_masks(src_mask, src_key_padding_mask, src)
-        #         return torch._transformer_encoder_layer_fwd(
-        #             src,
-        #             self.self_attn.embed_dim,
-        #             self.self_attn.num_heads,
-        #             self.self_attn.in_proj_weight,
-        #             self.self_attn.in_proj_bias,
-        #             self.self_attn.out_proj.weight,
-        #             self.self_attn.out_proj.bias,
-        #             self.activation_relu_or_gelu == 2,
-        #             self.norm_first,
-        #             self.norm1.eps,
-        #             self.norm1.weight,
-        #             self.norm1.bias,
-        #             self.norm2.weight,
-        #             self.norm2.bias,
-        #             self.linear1.weight,
-        #             self.linear1.bias,
-        #             self.linear2.weight,
-        #             self.linear2.bias,
-        #             merged_mask,
-        #             mask_type,
-        #         )
-
-
-        x = src
-        if self.norm_first:
-            x = self.norm1(x)
-            tmp_x_sa, self._sa_weights = self._sa_block(x, src_mask, src_key_padding_mask, is_causal=is_causal)
-            x = x + tmp_x_sa
-            x = x + self._ff_block(self.norm2(x))
-        else:
-            tmp_x_sa, self._sa_weights = self._sa_block(x, src_mask, src_key_padding_mask, is_causal=is_causal)
-            x = self.norm1(x + tmp_x_sa)
-            x = self.norm2(x + self._ff_block(x))
-        
-        return x, self._sa_weights
-
-    # self-attention block
-    def _sa_block(self, x: Tensor,
-                attn_mask: Optional[Tensor], key_padding_mask: Optional[Tensor], is_causal: bool = False) -> Tensor:
-        x, self._sa_weights = self.self_attn(x, x, x,
-                        attn_mask=attn_mask,
-                        key_padding_mask=key_padding_mask,
-                        need_weights=True, is_causal=is_causal)
-        return self.dropout1(x), self._sa_weights
-
-    # feed forward block
-    def _ff_block(self, x: Tensor) -> Tensor:
-        x = self.linear2(self.dropout(self.activation(self.linear1(x))))
-        return self.dropout2(x)
-
-class customTransformerDecoderLayer(nn.Module):
+    # Save tgt_plots, ground truth and predictions
+    np.save('tgt_plots.npy', tgt_plots, allow_pickle=False, fix_imports=False)
+    np.save('tgt_y_truth.npy', tgt_y_truth, allow_pickle=False, fix_imports=False)
+    np.save('tgt_y_hat.npy', tgt_y_hat, allow_pickle=False, fix_imports=False)
     
-    """
-    This class implements a custom encoder layer made up of self-attn, multi-head-attn and feedforward network..
+    return tgt_plots, tgt_y_truth, tgt_y_hat
 
-    This custom decoder layer is based on the paper "Attention Is All You Need".
-    Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez,
-    Lukasz Kaiser, and Illia Polosukhin. 2017. Attention is all you need. In Advances in
-    Neural Information Processing Systems, pages 6000-6010. It has been modified to return
-    the attention weights.
-    ----------
-    Args:
-        d_model: the number of expected features in the input (required).
-        nhead: the number of heads in the multiheadattention models (required).
-        dim_feedforward: the dimension of the feedforward network model (default=2048).
-        dropout: the dropout value (default=0.1).
-        activation: the activation function of the intermediate layer, can be a string
-            ("relu" or "gelu") or a unary callable. Default: relu
-        layer_norm_eps: the eps value in layer normalization components (default=1e-5).
-        batch_first: If ``True``, then the input and output tensors are provided
-            as (batch, seq, feature). Default: ``False`` (seq, batch, feature).
-        norm_first: if ``True``, layer norm is done prior to self attention, multihead
-            attention and feedforward operations, respectively. Otherwise it's done after.
-            Default: ``False`` (after).
-        bias: If set to ``False``, ``Linear`` and ``LayerNorm`` layers will not learn an additive
-            bias. Default: ``True``.
-
-    Returns:
-        x: decoder output.
-        sa_weights: self-attention weights.
-        mha_weights: multihead-attention weights.
-    """
-
-    __constants__ = ['norm_first']
-
-    def __init__(self, d_model: int, n_heads: int, dim_feedforward: int = 2048, dropout: float = 0.1,
-                activation: Union[str, Callable[[Tensor], Tensor]] = F.relu,
-                layer_norm_eps: float = 1e-5, batch_first: bool = False, norm_first: bool = False,
-                bias: bool = True, device=None, dtype=None) -> None:
-        factory_kwargs = {'device': device, 'dtype': dtype}
-        super().__init__()
-        
-        # Define objects to store custom weights
-        self._sa_weights = None
-        self._mha_weights = None
-
-        self.self_attn = nn.MultiheadAttention(d_model, n_heads, dropout=dropout, batch_first=batch_first,
-                                            bias=bias, **factory_kwargs)
-        self.multihead_attn = nn.MultiheadAttention(d_model, n_heads, dropout=dropout, batch_first=batch_first,
-                                                 bias=bias, **factory_kwargs)
-        # Implementation of Feedforward model
-        self.linear1 = nn.Linear(d_model, dim_feedforward, bias=bias, **factory_kwargs)
-        self.dropout = nn.Dropout(dropout)
-        self.linear2 = nn.Linear(dim_feedforward, d_model, bias=bias, **factory_kwargs)
-
-        self.norm_first = norm_first
-        self.norm1 = nn.LayerNorm(d_model, eps=layer_norm_eps, bias=bias, **factory_kwargs)
-        self.norm2 = nn.LayerNorm(d_model, eps=layer_norm_eps, bias=bias, **factory_kwargs)
-        self.norm3 = nn.LayerNorm(d_model, eps=layer_norm_eps, bias=bias, **factory_kwargs)
-        self.dropout1 = nn.Dropout(dropout)
-        self.dropout2 = nn.Dropout(dropout)
-        self.dropout3 = nn.Dropout(dropout)
-
-        # Legacy string support for activation function.
-        if isinstance(activation, str):
-            self.activation = nn._get_activation_fn(activation)
-        else:
-            self.activation = activation
-
-    def __setstate__(self, state):
-        if 'activation' not in state:
-            state['activation'] = F.relu
-        super().__setstate__(state)
-
-    def forward(
-        self,
-        tgt: Tensor,
-        memory: Tensor,
-        tgt_mask: Optional[Tensor] = None,
-        memory_mask: Optional[Tensor] = None,
-        tgt_key_padding_mask: Optional[Tensor] = None,
-        memory_key_padding_mask: Optional[Tensor] = None,
-        tgt_is_causal: bool = False,
-        memory_is_causal: bool = False,
-    ) -> Tuple[Tensor, Optional[Tensor], Optional[Tensor]]:
-        """Pass the inputs (and mask) through the decoder layer.
-
-        Args:
-            tgt: the sequence to the decoder layer (required).
-            memory: the sequence from the last layer of the encoder (required).
-            tgt_mask: the mask for the tgt sequence (optional).
-            memory_mask: the mask for the memory sequence (optional).
-            tgt_key_padding_mask: the mask for the tgt keys per batch (optional).
-            memory_key_padding_mask: the mask for the memory keys per batch (optional).
-            tgt_is_causal: If specified, applies a causal mask as ``tgt mask``.
-                Default: ``False``.
-                Warning:
-                ``tgt_is_causal`` provides a hint that ``tgt_mask`` is
-                the causal mask. Providing incorrect hints can result in
-                incorrect execution, including forward and backward
-                compatibility.
-            memory_is_causal: If specified, applies a causal mask as
-                ``memory mask``.
-                Default: ``False``.
-                Warning:
-                ``memory_is_causal`` provides a hint that
-                ``memory_mask`` is the causal mask. Providing incorrect
-                hints can result in incorrect execution, including
-                forward and backward compatibility.
-
-        Shape:
-            see the docs in Transformer class.
-        """
-        # see Fig. 1 of https://arxiv.org/pdf/2002.04745v1.pdf
-
-        x = tgt
-        if self.norm_first:
-            x = self.norm1(x)
-            tmp_x_sa, self._sa_weights = self._sa_block(x, tgt_mask, tgt_key_padding_mask, tgt_is_causal)
-            x = x + tmp_x_sa
-            x = self.norm2(x)
-            temp_x_mha, self._mha_weights = self._mha_block(x, memory, memory_mask, memory_key_padding_mask, memory_is_causal)
-            x = x + temp_x_mha
-            x = x + self._ff_block(self.norm3(x))
-        else:
-            tmp_x_sa, self._sa_weights = self._sa_block(x, tgt_mask, tgt_key_padding_mask, tgt_is_causal)
-            x = self.norm1(x + tmp_x_sa)
-            temp_x_mha, self._mha_weights = self._mha_block(x, memory, memory_mask, memory_key_padding_mask, memory_is_causal)
-            x = self.norm2(x + temp_x_mha)
-            x = self.norm3(x + self._ff_block(x))
-
-        return x, self._sa_weights, self._mha_weights
-
-    # self-attention block
-    def _sa_block(self, x: Tensor,
-                attn_mask: Optional[Tensor], key_padding_mask: Optional[Tensor], is_causal: bool = False) -> Tuple[Tensor, Optional[Tensor]]:
-        x, self._sa_weights = self.self_attn(x, x, x,
-                        attn_mask=attn_mask,
-                        key_padding_mask=key_padding_mask,
-                        is_causal=is_causal,
-                        need_weights=True)
-        return self.dropout1(x), self._sa_weights
-
-    # multihead attention block
-    def _mha_block(self, x: Tensor, mem: Tensor,
-                attn_mask: Optional[Tensor], key_padding_mask: Optional[Tensor], is_causal: bool = False) -> Tuple[Tensor, Optional[Tensor]]:
-        x, self._mha_weights = self.multihead_attn(x, mem, mem,
-                                attn_mask=attn_mask,
-                                key_padding_mask=key_padding_mask,
-                                is_causal=is_causal,
-                                need_weights=True)
-        return self.dropout2(x), self._mha_weights
-
-    # feed forward block
-    def _ff_block(self, x: Tensor) -> Tensor:
-        x = self.linear2(self.dropout(self.activation(self.linear1(x))))
-        return self.dropout3(x)
-
-class TimeSeriesTransformer(nn.Module):
+if __name__ == '__main__':
     
-    """
-    This class implements a transformer model that can be used for times series
-    forecasting.
-    """
+    # Define seed
+    torch.manual_seed(0)
 
-    # d_embed from Tianfang's transformer is d_model from my case
-    def __init__(self, input_size: int, decoder_sequence_len: int, batch_first: bool,
-                d_model: int, n_encoder_layers: int, n_decoder_layers: int, n_heads: int,
-                dropout_encoder: float, dropout_decoder: float, dropout_pos_encoder: float,
-                dim_feedforward_encoder: int, dim_feedforward_decoder: int,
-                num_src_features: int, num_predicted_features: int):
-        super(TimeSeriesTransformer, self).__init__()
-        
-        """
-        Arguments:
-        input_size (int): number of input variables. 1 if univariate.
-        decoder_sequence_len (int): the length of the input sequence fed to the decoder
-        d_model (int): all sub-layers in the model produce outputs of dimension d_model
-        n_encoder_layers (int): number of stacked encoder layers in the encoder
-        n_decoder_layers (int): number of stacked encoder layers in the decoder
-        n_heads (int): the number of attention heads (aka parallel attention layers)
-        dropout_encoder (float): the dropout rate of the encoder
-        dropout_decoder (float): the dropout rate of the decoder
-        dropout_pos_encoder (float): the dropout rate of the positional encoder
-        dim_feedforward_encoder (int): number of neurons in the linear layer of the encoder
-        dim_feedforward_decoder (int): number of neurons in the linear layer of the decoder
-        num_predicted_features (int) : the number of features you want to predict. Most of the time, 
-        this will be 1 because we're only forecasting FCR-N prices in DK2, but in we wanted to also 
-        predict FCR-D with the same model, num_predicted_features should be 2.
-        """
-        
-        self.model_tpye = 'Transformer'
+    station = 901
+    task_type = 'MM' # MU for multivariate predicts univariate, MM for multivariate predicts multivariate
 
-        self.decoder_sequence_len = decoder_sequence_len
-        
-        # print("input_size is: {}".format(input_size))
-        # print("d_model is: {}".format(d_model))
-        
-        # Create the three linear layers needed for the model
-        self.encoder_input_layer = nn.Linear(in_features=input_size, out_features=d_model)
-        
-        self.decoder_input_layer = nn.Linear(in_features=num_src_features, out_features=d_model)
-        
-        self.linear_mapping = nn.Linear(in_features=d_model, out_features=num_predicted_features)
-        
-        # Create the positional encoder dropout, max_seq_len, d_model, batch_first
-        self.positional_encoding_layer = PositionalEncoder(dropout=dropout_pos_encoder, max_seq_len=5000, d_model=d_model, batch_first=batch_first)
-        
-        # The encoder layer used in the paper is identical to the one used by Vaswani et al (2017) 
-        # on which the PyTorch transformer model is based
-        encoder_layer = customTransformerEncoderLayer(d_model=d_model, nhead=n_heads, dim_feedforward=dim_feedforward_encoder,
-                                                dropout=dropout_encoder, batch_first=batch_first)
-
-        # Stack the encoder layers in nn.TransformerEncoder
-        self.encoder = nn.TransformerEncoder(encoder_layer=encoder_layer, num_layers=n_encoder_layers, norm=None)
-        
-        # Define the decoder layer
-        decoder_layer = customTransformerDecoderLayer(d_model=d_model, n_heads=n_heads, dim_feedforward=dim_feedforward_decoder,
-                                                dropout=dropout_decoder,  batch_first=batch_first)
-        
-        
-        # Stack the decoder layers in nn.TransformerDecoder
-        self.decoder = nn.TransformerDecoder(decoder_layer=decoder_layer, num_layers=n_decoder_layers, norm=None)
-
-        # Initialize the weights
-        self.init_weights()
+    # Define run number
+    run = 1
     
-    def init_weights(self):
-        for p in self.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
-        
-    def forward(self, src: Tensor, tgt: Tensor, src_mask: Tensor=None, memory_mask: Tensor=None, tgt_mask: Tensor=None) -> Tensor:
-        
-        """
-        Arguments:
-        src: the output sequence of the encoder. Shape: (S, E) for unbatched input, (N, S, E) if 
-            batch_first=True, where S is the source of the sequence length, N is the batch size, and E is the number of 
-            features (1 if univariate).
-        tgt: the sequence to the decoder. Shape (T, E) for unbatched input, or (N, T, E) if batch_first=True, 
-            where T is the target sequence length, N is the batch size, and E is the number of features (1 if univariate).
-        src_mask: the mask for the src sequence to prevent the model from using data points from the target sequence.
-        tgt_mask: the mask fro the tgt sequence to prevent the model from using data points from the target sequence.
-        
-        Returns:
-        Tensor of shape: [target_sequence_length, batch_size, num_predicted_features]
-        """
-        
-        # print("From model.forward(): Size of src as given to forward(): {}".format(src.size()))
-        # print("From model.forward(): tgt size = {}".format(tgt.size()))
-        
-        # Pass through the input layer right before the encoder
-        # src shape: [batch_size, src length, d_model] regardless of number of input features
-        src = self.encoder_input_layer(src)
-        # print("From model.forward(): Size of src after input layer: {}".format(src.size()))
-        
-        
-        # Pass through the positional encoding layer            
-        # src shape: [batch_size, src length, d_model] regardless of number of input features
-        # print(src.shape) # Maybe I just have to use a squeeze on source to add a dimension of 1 for the batch size. Probably have to do it with tgt and maybe tgt_y too
-        src = self.positional_encoding_layer(src)
-        # print("From model.forward(): Size of src after pos_enc layer: {}".format(src.size()))
-        
-        # Pass through all the stacked encoder layers in the encoder
-        # Masking is only needed in the encoder if input sequences are padded which they are 
-        # not in this time series use case, because all my  input sequences are naturally of 
-        # the same length. 
-        # src shape: [batch_size, encoder_sequence_len, d_model]
-        src, sa_weights_encoder = self.encoder(src=src, mask=src_mask)
-        # print("From model.forward(): Size of src after encoder: {}".format(src.size()))
+    # Hyperparams
+    batch_size = 16
+    validation_size = 0.125
+    src_variables = [f'ammonium_{station}', f'conductivity_{station}', 
+                    f'dissolved_oxygen_{station}', f'pH_{station}', 
+                    f'precipitation_{station}', f'turbidity_{station}',
+                    f'water_temperature_{station}']
+    tgt_variables = [f'ammonium_{station}', f'conductivity_{station}', 
+                    f'dissolved_oxygen_{station}', f'pH_{station}', 
+                    f'precipitation_{station}', f'turbidity_{station}',
+                    f'water_temperature_{station}']
+    # input_variables would be just the src or tgt because we are predicting the tgt from the src, and not a tgt that is not in the src
+    input_variables = src_variables
+    timestamp_col_name = "date"
 
-        # Pass decoder input through decoder input layer
-        # tgt shape: [target sequence length, batch_size, d_model] regardless of number of input features
-        # print(f"From model.forward(): Size of tgt before the decoder = {tgt.size()}")
-        decoder_output = self.decoder_input_layer(tgt)
-        # print("From model.forward(): Size of decoder_output after linear decoder layer: {}".format(decoder_output.size()))
-        
-        # if src_mask is not None:
-        #     print("From model.forward(): Size of src_mask: {}".format(src_mask.size()))
-        # if tgt_mask is not None:
-        #     print("From model.forward(): Size of tgt_mask: {}".format(tgt_mask.size()))
-        
-        # Pass through the positional encoding layer            
-        # src shape: [batch_size, tgt length, d_model] regardless of number of input features
-        decoder_output = self.positional_encoding_layer(decoder_output)
+    # Only use data from this date and onwards
+    cutoff_date = datetime.datetime(2005, 1, 1) 
 
-        # Pass through the decoder
-        # Output shape: [batch_size, target seq len, d_model]
-        decoder_output, sa_weights, mha_weights = self.decoder(tgt=decoder_output, memory=src, tgt_mask=tgt_mask, memory_mask=memory_mask)
-        # print("From model.forward(): decoder_output shape after decoder: {}".format(decoder_output.shape))
+    d_model = 16
+    n_heads = 2
+    n_encoder_layers = 1
+    n_decoder_layers = 1 # Remember that with the current implementation it always has a decoder layer that returns the weights
+    encoder_sequence_len = 2016 # length of input given to encoder used to create the pre-summarized windows (4 years of data) 1461
+    # crushed_encoder_sequence_len = 53 # Encoder sequence length afther summarizing the data when defining the dataset 53
+    decoder_sequence_len = 672 # length of input given to decoder
+    output_sequence_len = 672 # target sequence length. If hourly data and length = 48, you predict 2 days ahead
+    in_features_encoder_linear_layer = 256
+    in_features_decoder_linear_layer = 256
+    max_sequence_len = encoder_sequence_len
+    window_size = encoder_sequence_len + output_sequence_len # used to slice data into sub-sequences
+    step_size = 96 # Step size, i.e. how many time steps does the moving window move at each step
+    batch_first = True
+
+    # Run parameters
+    lr = 0.001
+    epochs = 2
+
+    # Get device
+    device = ('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
+    print(f'Using {device} device')
+
+    # Read data
+    data = utils.read_data(timestamp_col_name=timestamp_col_name)
+    
+    # Extract train and val data for nomralization purposes
+    training_val_lower_bound = datetime.datetime(2005, 1, 1)
+    training_val_upper_bound = datetime.datetime(2017, 12, 31)
+
+    # Extract train/validation data
+    training_val_data = data[(training_val_lower_bound <= data.index) & (data.index <= training_val_upper_bound)]
+    
+    # Calculate the percentage of data in the training_val_data subset
+    total_data_range = (data.index.max() - data.index.min()).days
+    training_val_range = (training_val_upper_bound - training_val_lower_bound).days
+    train_val_percentage = (training_val_range / total_data_range)
+    
+    # # Normalize the data [already done in the smoother.py file]
+    # from sklearn.preprocessing import MinMaxScaler
+    # scaler = MinMaxScaler()
+
+    # # Fit scaler on the training set
+    # scaler.fit(training_val_data.iloc[:, 1:-1])
+
+    # # Transform the training and test sets
+    # data.iloc[:, 1:-1] = scaler.transform(data.iloc[:, 1:-1])
+    
+    # Make list of (start_idx, end_idx) pairs that are used to slice the time series sequence into chuncks
+    data_indices = utils.get_indices(data=data, window_size=window_size, step_size=step_size)
+
+    # Divide train data into train and validation data with a 8:1 ratio using the indices.
+    # This is done this way because we need 4 years of data to create the summarized nonuniform timesteps,
+    # what limits the size of the validation set. However, with this implementation, we use data from the
+    # traning part to build the summarized nonuniform timesteps for the validation set. For example, if
+    # we use the current validation size, the set would have less than four years of data and would not
+    # be able to create the summarized nonuniform timesteps.
+    training_indices = data_indices[:round(len(data_indices) * train_val_percentage)]
+    validation_indices = training_indices[-round(len(training_indices) * validation_size):]
+    testing_indices = data_indices[-round(len(data_indices) * (1-train_val_percentage)):]
+
+    # Make instance of the custom dataset class
+    training_data = ds.TransformerDataset(task_type=task_type, data=torch.tensor(data[input_variables].values).float(),
+                                        indices=training_indices, encoder_sequence_len=encoder_sequence_len, 
+                                        decoder_sequence_len=decoder_sequence_len, tgt_sequence_len=output_sequence_len)
+    validation_data = ds.TransformerDataset(task_type=task_type, data=torch.tensor(data[input_variables].values).float(),
+                                        indices=validation_indices, encoder_sequence_len=encoder_sequence_len, 
+                                        decoder_sequence_len=decoder_sequence_len, tgt_sequence_len=output_sequence_len)
+    testing_data = ds.TransformerDataset(task_type=task_type, data=torch.tensor(data[input_variables].values).float(),
+                                        indices=testing_indices, encoder_sequence_len=encoder_sequence_len, 
+                                        decoder_sequence_len=decoder_sequence_len, tgt_sequence_len=output_sequence_len)
+
+    # Set up dataloaders
+    training_val_data = training_data + validation_data # For testing puporses
+    training_data = DataLoader(training_data, batch_size, shuffle=False)
+    validation_data = DataLoader(validation_data, batch_size, shuffle=False)
+    testing_data = DataLoader(testing_data, batch_size=1, shuffle=False)
+    training_val_data = DataLoader(training_val_data, batch_size=1, shuffle=False) # For testing puporses
+    
+    # # Update the encoder sequence length to its crushed version
+    # encoder_sequence_len = crushed_encoder_sequence_len
+
+    # Instantiate the transformer model and send it to device
+    model = tst.TimeSeriesTransformer(input_size=len(src_variables), decoder_sequence_len=decoder_sequence_len, 
+                                    batch_first=batch_first, d_model=d_model, n_encoder_layers=n_encoder_layers, 
+                                    n_decoder_layers=n_decoder_layers, n_heads=n_heads, dropout_encoder=0.2, 
+                                    dropout_decoder=0.2, dropout_pos_encoder=0.1, dim_feedforward_encoder=in_features_encoder_linear_layer, 
+                                    dim_feedforward_decoder=in_features_decoder_linear_layer, num_src_features=len(src_variables), 
+                                    num_predicted_features=len(tgt_variables)).to(device)
+
+    # Send model to device
+    model.to(device)
+    
+    # Print model and number of parameters
+    print('Defined model:\n', model)
+    utils.count_parameters(model)
+    
+    # Make src mask for the decoder with size
+    # [batch_size*n_heads, output_sequence_length, encoder_sequence_len]
+    src_mask = utils.masker(dim1=encoder_sequence_len, dim2=encoder_sequence_len).to(device)
+    
+    # Make the memory mask for the decoder
+    memory_mask = None
+
+    # Make tgt mask for decoder with size
+    # [batch_size*n_heads, output_sequence_length, output_sequence_length]
+    tgt_mask = utils.masker(dim1=output_sequence_len, dim2=output_sequence_len).to(device)
+    
+    # Define optimizer and loss function
+    loss_function = nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+
+    # Instantiate early stopping
+    early_stopping = utils.EarlyStopping(patience=30, verbose=True)
+
+    # Update model in the training process and test it
+    start_time = time.time()
+    df_training = pd.DataFrame(columns=('epoch', 'loss_train'))
+    df_validation = pd.DataFrame(columns=('epoch', 'loss_val'))
+    for t in range(epochs): # epochs is defined in the hyperparameters section above
+        print(f"Epoch {t+1}\n-------------------------------")
+        train(training_data, model, src_mask, memory_mask, tgt_mask, loss_function, optimizer, device, df_training, epoch=t)
+        epoch_val_loss = val(validation_data, model, src_mask, memory_mask, tgt_mask, loss_function, device, df_validation, epoch=t)
+
+        # Early stopping
+        early_stopping(epoch_val_loss, model, path='checkpoints')
+        if early_stopping.early_stop:
+            print("Early stopping")
+            break
         
-        # Pass through the linear mapping
-        # shape [batch_size, target seq len]
-        decoder_output = self.linear_mapping(decoder_output)
-        # print("From model.forward(): decoder_output size after linear_mapping = {}".format(decoder_output.size()))
-        
-        return decoder_output, sa_weights_encoder, sa_weights, mha_weights
+    print("Done! ---Execution time: %s seconds ---" % (time.time() - start_time))
+
+    # # Save the model
+    # torch.save(model, "results/models/model.pth")
+    # print("Saved PyTorch entire model to models/model.pth")
+
+    # # Load the model
+    # model = torch.load("results/models/model.pth").to(device)
+    # print('Loaded PyTorch model from models/model.pth')
+
+    # Inference
+    tgt_plots_train_val, tgt_y_truth_train_val, tgt_y_hat_train_val = test(training_val_data, model, src_mask, memory_mask, tgt_mask, device)
+    tgt_plots_test, tgt_y_truth_test, tgt_y_hat_test = test(testing_data, model, src_mask, memory_mask, tgt_mask, device)
+    
+    # # Save results
+    # utils.logger(run=run, batches=batch_size, d_model=d_model, n_heads=n_heads,
+    #             encoder_layers=n_encoder_layers, decoder_layers=n_decoder_layers,
+    #             dim_ll_encoder=in_features_encoder_linear_layer, dim_ll_decoder=in_features_decoder_linear_layer,
+    #             lr=lr, epochs=epochs)
+
+    # # Plot loss
+    # plt.figure(1);plt.clf()
+    # plt.plot(df_training['epoch'], df_training['loss_train'], '-o', label='loss train')
+    # plt.plot(df_training['epoch'], df_validation['loss_val'], '-o', label='loss val')
+    # plt.yscale('log')
+    # plt.xlabel(r'epoch')
+    # plt.ylabel(r'loss')
+    # plt.legend()
+    # # plt.show()
+
+    # plt.savefig(f'results/run_{run}/loss.png', dpi=300)
+
+    # Plot testing results
+    # utils.plots(tgt_plots_train_val, tgt_y_truth_train_val, tgt_y_hat_train_val, tgt_percentage=0.2,
+    #             multiple=100, station=station, phase='train_val', run=run)
+    # utils.plots(tgt_plots_test, tgt_y_truth_test, tgt_y_hat_test, tgt_percentage=0.2,
+    #             multiple=100, station=station, phase='test', run=run)
+
+    # # Metrics
+    # utils.metrics(tgt_y_truth_train_val, tgt_y_hat_train_val, 'train_val')
+    # utils.metrics(tgt_y_truth_test, tgt_y_hat_test, 'test')

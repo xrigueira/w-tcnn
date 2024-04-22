@@ -206,3 +206,20 @@ class TransformerDataset(Dataset):
         src = torch.cat([years_data, months_data, weeks_data, last_month_data], dim=0)
 
         return src
+    
+class CNNDataset(Dataset):
+    
+    """
+    Dataset class used for transformer models.
+    ----------
+    Arguments:
+
+    Returns:
+
+    """
+    # TODO Continue building the dataset class for the CNN model. I need to set the tgt as the average of the last 7 days and the src has to be 96 points.
+    def __init__(self, data: torch.tensor, indices: list, src_sequence_len) -> None:
+        super().__init__()
+
+    def __len__(self):
+        return len(self.indices)

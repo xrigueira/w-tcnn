@@ -8,8 +8,8 @@ from torch.utils.data import DataLoader
 
 import utils
 import dataset as ds
-import transformer as tst
-import main as mn
+import models.transformer as tst
+import transformer as mn
 
 # Ignore warnings
 import warnings
