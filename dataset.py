@@ -11,24 +11,32 @@ class TransformerDataset(Dataset):
     Dataset class used for transformer models.
     ----------
     Arguments:
-    task_type: str, the type of task. It can be multivariate predicts univariate (MU), or 
-    multivariate predicts multivariate (MM).
-    data: tensor, the entire train, validation or test data sequence before any slicing. 
-    If univariate, data.size() will be [number of samples, number of variables] where the 
-    number of variables will be equal to 1 + the number of exogenous variables. Number of 
-    exogenous variables would be 0 if univariate.
+        - task_type: str, the type of task. It can be multivariate predicts univariate (MU), or 
+        multivariate predicts multivariate (MM).
+        - data: tensor, the entire train, validation or test data sequence before any slicing. 
+        If univariate, data.size() will be [number of samples, number of variables] where the 
+        number of variables will be equal to 1 + the number of exogenous variables. Number of 
+        exogenous variables would be 0 if univariate.
 
-    indices: a list of tuples. Each tuple has two elements:
-        1) the start index of a sub-sequence
-        2) the end index of a sub-sequence. 
-        The sub-sequence is split into src, tgt and tgt_y later.  
+        - indices: a list of tuples. Each tuple has two elements:
+            1) the start index of a sub-sequence
+            2) the end index of a sub-sequence. 
+            The sub-sequence is split into src, tgt and tgt_y later.  
 
-    encoder_sequence_len: int, the desired length of the input sequence given to the the first layer of
+        encoder_sequence_len: int, the desired length of the input sequence given to the the first layer of
         the transformer model.
 
-    tgt_sequence_len: int, the desired length of the target sequence (the output of the model)
+        tgt_sequence_len: int, the desired length of the target sequence (the output of the model)
 
-    tgt_idx: The index position of the target variable in data. Data is a 2D tensor
+        tgt_idx: The index position of the target variable in data. Data is a 2D tensor
+
+    Returns:
+        A tuple with 4 elements:
+        1) src (the encoder input)
+        2) tgt (the decoder input)
+        3) tgt_y (the target)
+        4) src_p (the encoder input for plotting)
+        5) tgt_p (the target for plotting)
     """
     
     def __init__(self, task_type: str, data: torch.tensor, indices: list, encoder_sequence_len: int, decoder_sequence_len: int, tgt_sequence_len: int) -> None:
@@ -213,13 +221,58 @@ class CNNDataset(Dataset):
     Dataset class used for transformer models.
     ----------
     Arguments:
+        - data: tensor, the entire train, validation or test data sequence before any slicing. 
 
+        - indices: a list of tuples. Each tuple has two elements:
+            1) the start index of a sub-sequence
+            2) the end index of a sub-sequence. 
+            The sub-sequence is split into src, tgt and tgt_y later.
+        - sequence_len: int, the desired length of the input sequence given to the the first layer of
+            the U-Net model.
     Returns:
-
     """
     # TODO Continue building the dataset class for the CNN model. I need to set the tgt as the average of the last 7 days and the src has to be 96 points.
-    def __init__(self, data: torch.tensor, indices: list, src_sequence_len) -> None:
+    def __init__(self, data: torch.tensor, indices: list, sequence_len) -> None:
         super().__init__()
+
+        self.data = data
+        self.indices = indices
+        self.sequence_len = sequence_len
 
     def __len__(self):
         return len(self.indices)
+    
+    def __getitem__(self, index):
+
+        # Get the first element of the i'th tuple in the list self.indices
+        start_idx = self.indices[index][0]
+
+        # Get the second (and last) element of the i'th tuple in the list self.indices
+        end_idx = self.indices[index][1]
+
+        sequence = self.data[start_idx:end_idx]
+
+        src, tgt = self._get_src_tgt(sequence=sequence, sequence_len=self.sequence_len)
+
+        return src, tgt
+    
+    def _get_src_tgt(self, sequence: torch.Tensor, sequence_len: int) -> Tuple[torch.tensor, torch.tensor]:
+
+        """Generate the src (U-Net input) and tgt (U-Net target) sequences from a sequence.
+        ----------
+        Arguments:
+        sequence: tensor, a 1D tensor of length n where n = sequence length
+        sequence_len: int, the desired length of the input to the U-Net model
+
+        Return:
+        src: tensor, 1D, used as input to the U-Net model
+        tgt: tensor, 1D, used as input to the U-Net model
+        """
+
+        # The input sequence to the U-Net model
+        src = sequence[:, :-1]
+
+        # The target sequence against which the model output will be compared to compute loss
+        tgt = sequence[:, -1:].mean(dim=0).unsqueeze(0)
+
+        return src, tgt
