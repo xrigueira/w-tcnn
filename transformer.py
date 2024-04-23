@@ -70,7 +70,7 @@ def val(dataloader, model, src_mask, memory_mask, tgt_mask, loss_function, devic
     return epoch_val_loss
 
 # Define inference step
-def test(dataloader, model, src_mask, memory_mask, tgt_mask, device):
+def test(dataloader, model, src_mask, memory_mask, tgt_mask, task_type, device):
     
     # Get tgt for plotting purposes
     tgt_plots = torch.zeros(len(dataloader), output_sequence_len, len(tgt_variables))
@@ -103,17 +103,19 @@ def test(dataloader, model, src_mask, memory_mask, tgt_mask, device):
             # all_mha_weights_inference.append(mha_weights)
             pred = pred.to(device)
 
-            # # Save src, tgt and tgt_y, and pred for plotting purposes
-            # np.save(f'results/src_p_{i}.npy', src_p.cpu(), allow_pickle=False, fix_imports=False)
-            # np.save(f'results/tgt_p_{i}.npy', tgt_p.cpu(), allow_pickle=False, fix_imports=False)
-            # np.save(f'results/tgt_y_hat_{i}.npy', pred.cpu(), allow_pickle=False, fix_imports=False)
+            # Save src, tgt and tgt_y, and pred for plotting purposes
+            if task_type == 'test':
+                np.save(f'results/src_p_{i}.npy', src_p.cpu(), allow_pickle=False, fix_imports=False)
+                np.save(f'results/tgt_p_{i}.npy', tgt_p.cpu(), allow_pickle=False, fix_imports=False)
+                np.save(f'results/tgt_y_hat_{i}.npy', pred.cpu(), allow_pickle=False, fix_imports=False)
             
             tgt_y_hat[i] = pred
     
-    # # Save inference attention for the last step
-    # np.save('results/all_sa_encoder_weights.npy', np.stack([sa_weight_encoder.cpu().numpy() for sa_weight_encoder in all_sa_weights_encoder_inference]), allow_pickle=False, fix_imports=False)
-    # np.save('results/all_sa_weights.npy', np.stack([sa_weight.cpu().numpy() for sa_weight in all_sa_weights_inference]), allow_pickle=False, fix_imports=False)
-    # np.save('results/all_mha_weights.npy', np.stack([mha_weight.cpu().numpy() for mha_weight in all_mha_weights_inference]), allow_pickle=False, fix_imports=False)
+    # Save inference attention for the last step
+    if task_type == 'test':
+        np.save('results/all_sa_encoder_weights.npy', np.stack([sa_weight_encoder.cpu().numpy() for sa_weight_encoder in all_sa_weights_encoder_inference]), allow_pickle=False, fix_imports=False)
+        np.save('results/all_sa_weights.npy', np.stack([sa_weight.cpu().numpy() for sa_weight in all_sa_weights_inference]), allow_pickle=False, fix_imports=False)
+        np.save('results/all_mha_weights.npy', np.stack([mha_weight.cpu().numpy() for mha_weight in all_mha_weights_inference]), allow_pickle=False, fix_imports=False)
     
     # Pass target_y_hat to cpu for plotting purposes
     tgt_y_hat = tgt_y_hat.cpu()
@@ -121,9 +123,10 @@ def test(dataloader, model, src_mask, memory_mask, tgt_mask, device):
     tgt_y_truth, tgt_y_hat = tgt_y_truth.numpy(), tgt_y_hat.numpy()
 
     # Save tgt_plots, ground truth and predictions
-    np.save('tgt_plots.npy', tgt_plots, allow_pickle=False, fix_imports=False)
-    np.save('tgt_y_truth.npy', tgt_y_truth, allow_pickle=False, fix_imports=False)
-    np.save('tgt_y_hat.npy', tgt_y_hat, allow_pickle=False, fix_imports=False)
+    if task_type == 'test':
+        np.save('tgt_plots.npy', tgt_plots, allow_pickle=False, fix_imports=False)
+        np.save('tgt_y_truth.npy', tgt_y_truth, allow_pickle=False, fix_imports=False)
+        np.save('tgt_y_hat.npy', tgt_y_hat, allow_pickle=False, fix_imports=False)
     
     return tgt_plots, tgt_y_truth, tgt_y_hat
 
@@ -297,8 +300,8 @@ if __name__ == '__main__':
     # print('Loaded PyTorch model from models/model.pth')
 
     # Inference
-    tgt_plots_train_val, tgt_y_truth_train_val, tgt_y_hat_train_val = test(training_val_data, model, src_mask, memory_mask, tgt_mask, device)
-    tgt_plots_test, tgt_y_truth_test, tgt_y_hat_test = test(testing_data, model, src_mask, memory_mask, tgt_mask, device)
+    tgt_plots_train_val, tgt_y_truth_train_val, tgt_y_hat_train_val = test(training_val_data, model, src_mask, memory_mask, tgt_mask, 'train_val', device)
+    tgt_plots_test, tgt_y_truth_test, tgt_y_hat_test = test(testing_data, model, src_mask, memory_mask, tgt_mask, 'test', device)
     
     # # Save results
     # utils.logger(run=run, batches=batch_size, d_model=d_model, n_heads=n_heads,

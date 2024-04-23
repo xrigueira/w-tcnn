@@ -374,6 +374,10 @@ def weights_plot(iteration: int):
     # Read weights data
     weights = np.load('results/all_sa_encoder_weights.npy', allow_pickle=True, fix_imports=True)
 
+    # Define dates for the X-axis
+    start_date = pd.to_datetime('2007-09-30') - pd.DateOffset(days=1461) # To include the 4 years before the first data point predicted
+    dates = pd.date_range(start=start_date, periods=weights.shape[0], freq='D')
+
     # Subset the last row of the weights
     weights = weights[iteration][0][-1]
 
@@ -405,7 +409,7 @@ def weights_plot(iteration: int):
     ax2 = ax1.twinx()
 
     # Plot bars on primary axes
-    x_data = range(-1461, 1)
+    x_data = dates[iteration:iteration+1461+1]
     bars = ax1.bar(x_data, weights, color='darkseagreen', width=0.7, label='Weights')
 
     # Invert the y-axis for bars
@@ -420,7 +424,7 @@ def weights_plot(iteration: int):
     ax1.set_xlabel('Days before')
     ax1.set_ylabel('Weights', color='dimgray')
     ax2.set_ylabel('SWIT and PET values', color='dimgray')
-    plt.title(f'Q at iteration {iteration}')
+    plt.title(f'Q {x_data[-1].date()}')
 
     # Additional customization
     # ax1.tick_params('y', colors='darkseagreen')  # Set color for right y-axis ticks
