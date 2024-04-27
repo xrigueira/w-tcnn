@@ -9,6 +9,8 @@ from preprocessors.smoother import smoother
 
 """Preprocessing starts from the original univariate txt files."""
 
+# OJO. I have not used water_flow due to its high number of gaps.
+
 # Define the data we want to study
 files = [f for f in os.listdir("raw_data") if os.path.isfile(os.path.join("raw_data", f))]
 
