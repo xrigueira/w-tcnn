@@ -56,7 +56,7 @@ class DoubleConv(nn.Module):
         return x
 
 class Downscale(nn.Module):
-    """Downscale block for UNet model.
+    """[Used by _UNet] Downscale block for UNet model.
     This block consists of a DoubleConv block followed by a max pooling layer.
     ----------
 
@@ -80,7 +80,7 @@ class Downscale(nn.Module):
         return x
 
 class Upscale(nn.Module):
-    """Upscale block for UNet model.
+    """[Used by _UNet] Upscale block for UNet model.
     This block consists of an upsampling layer followed by a DoubleConv block.
     ----------
     Args:
@@ -104,7 +104,7 @@ class Upscale(nn.Module):
         return x
     
 class Encoder(nn.Module):
-    """Encoder block for UNet model.
+    """[Used by _UNet] Encoder block for UNet model.
     This block consists of four Downscale blocks.
     ----------
     Args:
@@ -131,7 +131,7 @@ class Encoder(nn.Module):
         return x
 
 class Decoder(nn.Module):
-    """Decoder block for UNet model.
+    """[Used by _UNet] Decoder block for UNet model.
     This block consists of four Upscale blocks.
     ----------
     Args:
@@ -171,7 +171,7 @@ class _UNet(nn.Module):
     """
 
     def __init__(self, n_class) -> None:
-        super().__init__()
+        super(_UNet, self).__init__()
 
         self.encoder = Encoder(3, 64)
         self.decoder = Decoder(1024, 64)
@@ -183,10 +183,10 @@ class _UNet(nn.Module):
         x = self.outconv(x)
         return x
 
-# Define UNet model
+# Define the UNet model
 class UNet(nn.Module):
     def __init__(self, n_variables, channels, n_classes) -> None:
-        super().__init__(n_variables, channels, n_classes)
+        super(UNet, self).__init__()
 
         """UNet model for image segmentation.
         This model consists of an encoder and a decoder.

@@ -231,13 +231,12 @@ class CNNDataset(Dataset):
             the U-Net model.
     Returns:
     """
-    # TODO Continue building the dataset class for the CNN model. I need to set the tgt as the average of the last 7 days and the src has to be 96 points.
-    def __init__(self, data: torch.tensor, indices: list, sequence_len) -> None:
+
+    def __init__(self, data: torch.tensor, indices: list) -> None:
         super().__init__()
 
         self.data = data
         self.indices = indices
-        self.sequence_len = sequence_len
 
     def __len__(self):
         return len(self.indices)
@@ -252,17 +251,16 @@ class CNNDataset(Dataset):
 
         sequence = self.data[start_idx:end_idx]
 
-        src, tgt = self._get_src_tgt(sequence=sequence, sequence_len=self.sequence_len)
+        src, tgt = self._get_src_tgt(sequence=sequence)
 
         return src, tgt
     
-    def _get_src_tgt(self, sequence: torch.Tensor, sequence_len: int) -> Tuple[torch.tensor, torch.tensor]:
+    def _get_src_tgt(self, sequence: torch.Tensor) -> Tuple[torch.tensor, torch.tensor]:
 
         """Generate the src (U-Net input) and tgt (U-Net target) sequences from a sequence.
         ----------
         Arguments:
         sequence: tensor, a 1D tensor of length n where n = sequence length
-        sequence_len: int, the desired length of the input to the U-Net model
 
         Return:
         src: tensor, 1D, used as input to the U-Net model

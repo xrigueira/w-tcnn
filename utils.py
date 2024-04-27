@@ -290,7 +290,7 @@ def metrics(truth, hat, phase):
 
     return nse, rmse, pbias, kge
 
-def plots(tgt, truth, hat, tgt_percentage, multiple, station, phase, run):
+def plots_transformer(tgt, truth, hat, tgt_percentage, multiple, station, phase, run):
     
     """
     Plot the observed and predicted values
@@ -329,13 +329,38 @@ def plots(tgt, truth, hat, tgt_percentage, multiple, station, phase, run):
             for i in range(hat.shape[1]):
                 plt.plot(range(tgt_length, tgt_length + hat.shape[0]), hat[:, i], color=colors_hat[i])
 
-            plt.title(f'Results for the first instance of station {station}')
+            plt.title(f'Results for instance {i} of station {station}')
             plt.xlabel(r'time (15 min)')
             plt.ylabel(r'y')
             plt.legend()
             plt.show()
 
             # plt.savefig(f'results/run_{run}/{phase}.png', dpi=300)
+
+def plots_cnn(truth, hat, station, phase, run):
+    
+    """
+    Plot the observed and predicted values
+    ----------
+    Arguments:
+    truth (np.array): np.array, the observed values
+    hat (np.array): the model's predictions
+    phase (str): the phase of the data. Must be one of "train", "val", or "test"
+
+    Returns:
+    None
+    """
+
+    plt.figure();plt.clf()
+    plt.plot(truth, label='observed')
+    plt.plot(hat, label='predicted')
+    plt.title(f'Station {station} {phase} results')
+    plt.xlabel(r'time (15 min)')
+    plt.ylabel(r'y')
+    plt.legend()
+    # plt.show()
+
+    plt.savefig(f'results/run_{run}/{phase}.png', dpi=300)
 
 def logger(run, batches, d_model, n_heads, encoder_layers, decoder_layers, dim_ll_encoder, dim_ll_decoder, lr, epochs):
 

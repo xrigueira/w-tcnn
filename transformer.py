@@ -166,11 +166,11 @@ if __name__ == '__main__':
     encoder_sequence_len = 2016 # length of input given to encoder used to create the pre-summarized windows (4 years of data) 1461
     # crushed_encoder_sequence_len = 53 # Encoder sequence length afther summarizing the data when defining the dataset 53
     decoder_sequence_len = 672 # length of input given to decoder
-    output_sequence_len = 672 # target sequence length. If hourly data and length = 48, you predict 2 days ahead
+    output_sequence_len = 672 # Target sequence length. If hourly data and length = 48, you predict 2 days ahead
     in_features_encoder_linear_layer = 256
     in_features_decoder_linear_layer = 256
     max_sequence_len = encoder_sequence_len
-    window_size = encoder_sequence_len + output_sequence_len # used to slice data into sub-sequences
+    window_size = encoder_sequence_len + output_sequence_len # Used to slice data into sub-sequences
     step_size = 96 # Step size, i.e. how many time steps does the moving window move at each step
     batch_first = True
 
@@ -190,7 +190,7 @@ if __name__ == '__main__':
     training_val_upper_bound = datetime.datetime(2017, 12, 31)
 
     # Extract train/validation data
-    training_val_data = data[(training_val_lower_bound <= data.index) & (data.index <= training_val_upper_bound)]
+    training_val_data = data[(training_val_lower_bound >= data.index) & (data.index <= training_val_upper_bound)]
     
     # Calculate the percentage of data in the training_val_data subset
     total_data_range = (data.index.max() - data.index.min()).days
@@ -248,9 +248,6 @@ if __name__ == '__main__':
                                     dropout_decoder=0.2, dropout_pos_encoder=0.1, dim_feedforward_encoder=in_features_encoder_linear_layer, 
                                     dim_feedforward_decoder=in_features_decoder_linear_layer, num_src_features=len(src_variables), 
                                     num_predicted_features=len(tgt_variables)).to(device)
-
-    # Send model to device
-    model.to(device)
     
     # Print model and number of parameters
     print('Defined model:\n', model)
@@ -291,24 +288,6 @@ if __name__ == '__main__':
         
     print("Done! ---Execution time: %s seconds ---" % (time.time() - start_time))
 
-    # # Save the model
-    # torch.save(model, "results/models/model.pth")
-    # print("Saved PyTorch entire model to models/model.pth")
-
-    # # Load the model
-    # model = torch.load("results/models/model.pth").to(device)
-    # print('Loaded PyTorch model from models/model.pth')
-
-    # Inference
-    tgt_plots_train_val, tgt_y_truth_train_val, tgt_y_hat_train_val = test(training_val_data, model, src_mask, memory_mask, tgt_mask, 'train_val', device)
-    tgt_plots_test, tgt_y_truth_test, tgt_y_hat_test = test(testing_data, model, src_mask, memory_mask, tgt_mask, 'test', device)
-    
-    # # Save results
-    # utils.logger(run=run, batches=batch_size, d_model=d_model, n_heads=n_heads,
-    #             encoder_layers=n_encoder_layers, decoder_layers=n_decoder_layers,
-    #             dim_ll_encoder=in_features_encoder_linear_layer, dim_ll_decoder=in_features_decoder_linear_layer,
-    #             lr=lr, epochs=epochs)
-
     # # Plot loss
     # plt.figure(1);plt.clf()
     # plt.plot(df_training['epoch'], df_training['loss_train'], '-o', label='loss train')
@@ -321,10 +300,28 @@ if __name__ == '__main__':
 
     # plt.savefig(f'results/run_{run}/loss.png', dpi=300)
 
+    # # Save the model
+    # torch.save(model, "results/models/transformer_model.pth")
+    # print("Saved PyTorch entire model to results/models/transformer_model.pth")
+
+    # # Load the model
+    # model = torch.load("results/models/transformer_model.pth").to(device)
+    # print('Loaded PyTorch model from results/models/transformer_model.pth')
+
+    # Inference
+    tgt_plots_train_val, tgt_y_truth_train_val, tgt_y_hat_train_val = test(training_val_data, model, src_mask, memory_mask, tgt_mask, 'train_val', device)
+    tgt_plots_test, tgt_y_truth_test, tgt_y_hat_test = test(testing_data, model, src_mask, memory_mask, tgt_mask, 'test', device)
+    
+    # # Save results
+    # utils.logger(run=run, batches=batch_size, d_model=d_model, n_heads=n_heads,
+    #             encoder_layers=n_encoder_layers, decoder_layers=n_decoder_layers,
+    #             dim_ll_encoder=in_features_encoder_linear_layer, dim_ll_decoder=in_features_decoder_linear_layer,
+    #             lr=lr, epochs=epochs)
+
     # Plot testing results
-    # utils.plots(tgt_plots_train_val, tgt_y_truth_train_val, tgt_y_hat_train_val, tgt_percentage=0.2,
+    # utils.plots_transformer(tgt_plots_train_val, tgt_y_truth_train_val, tgt_y_hat_train_val, tgt_percentage=0.2,
     #             multiple=100, station=station, phase='train_val', run=run)
-    # utils.plots(tgt_plots_test, tgt_y_truth_test, tgt_y_hat_test, tgt_percentage=0.2,
+    # utils.plots_transformer(tgt_plots_test, tgt_y_truth_test, tgt_y_hat_test, tgt_percentage=0.2,
     #             multiple=100, station=station, phase='test', run=run)
 
     # # Metrics
