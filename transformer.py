@@ -72,63 +72,61 @@ def val(dataloader, model, src_mask, memory_mask, tgt_mask, loss_function, devic
 # Define inference step
 def test(dataloader, model, src_mask, memory_mask, tgt_mask, task_type, device):
     
-    # Get tgt for plotting purposes
-    tgt_plots = torch.zeros(len(dataloader), output_sequence_len, len(tgt_variables))
-    for i, (src, tgt, tgt_y, src_p, tgt_p) in enumerate(dataloader):
-        tgt_plots[i] = tgt
-    
-    # Get ground truth
-    tgt_y_truth = torch.zeros(len(dataloader), output_sequence_len, len(tgt_variables))
-    for i, (src, tgt, tgt_y, src_p, tgt_p) in enumerate(dataloader):
-        tgt_y_truth[i] = tgt_y
+    # Get test dates
+    dates = data.index[testing_indices[0][0]:testing_indices[-1][1]]
 
-    # Define tensor to store the predictions
-    tgt_y_hat = torch.zeros((len(dataloader)), output_sequence_len, len(tgt_variables), device=device)
+    # Set up objects to store metrics for each instance
+    nse_final, rmse_final, pbias_final, kge_final = [], [], [], []
 
-    # Define list to store the attention weights
-    all_sa_weights_encoder_inference = []
-    all_sa_weights_inference = []
-    all_mha_weights_inference = []
-    
     # Perform inference
     model.eval()
     with torch.no_grad():
         for i, sample in enumerate(dataloader):
             src, tgt, tgt_y, src_p, tgt_p = sample
-
             src, tgt, tgt_y, src_p, tgt_p = src.to(device), tgt.to(device), tgt_y.to(device), src_p.to(device), tgt_p.to(device)
 
             pred, sa_weights_encoder, sa_weights, mha_weights = model(src=src, tgt=tgt, src_mask=src_mask, memory_mask=memory_mask, tgt_mask=tgt_mask)
-            all_sa_weights_encoder_inference.append(sa_weights_encoder)
-            all_sa_weights_inference.append(sa_weights)
-            all_mha_weights_inference.append(mha_weights)
             pred = pred.to(device)
 
-            # Save src, tgt and tgt_y, and pred for plotting purposes
-            if task_type == 'test':
-                np.save(f'plots_data/src_p_{i}.npy', src_p.cpu(), allow_pickle=False, fix_imports=False)
-                np.save(f'plots_data/tgt_p_{i}.npy', tgt_p.cpu(), allow_pickle=False, fix_imports=False)
-                np.save(f'plots_data/tgt_y_hat_{i}.npy', pred.cpu(), allow_pickle=False, fix_imports=False)
+            # Squeeze and pass src, tgt_y, pred, and weights to the cpu for plotting purposes
+            src = src.squeeze(0).cpu().detach().numpy()
+            tgt_y = tgt_y.squeeze(0).cpu().detach().numpy()
+            pred = pred.squeeze(0).cpu().detach().numpy()
+            sa_weights_encoder = sa_weights_encoder.squeeze(0).cpu().detach().numpy()
             
-            tgt_y_hat[i] = pred
+            # Get the date
+            date = dates[i]
+
+            # Plot the results
+            if task_type == 'test':
+                utils.plots_transformer(date, src, tgt_y, pred, weights=sa_weights_encoder, 
+                                        tgt_percentage=1, station=station, phase=task_type, 
+                                        instance=i)
+            
+            # Get metrics
+            nse, rmse, pbias, kge = utils.metrics_transformer(tgt_y, pred, task_type)
+            nse_final.append(nse), rmse_final.append(rmse), pbias_final.append(pbias), kge_final.append(kge)
+
+            if i == 1:
+                break
     
-    # Save inference attention
-    if task_type == 'test':
-        np.save('plots_data/all_sa_encoder_weights.npy', np.stack([sa_weight_encoder.cpu().numpy() for sa_weight_encoder in all_sa_weights_encoder_inference]), allow_pickle=False, fix_imports=False)
-        np.save('plots_data/all_sa_weights.npy', np.stack([sa_weight.cpu().numpy() for sa_weight in all_sa_weights_inference]), allow_pickle=False, fix_imports=False)
-        np.save('plots_data/all_mha_weights.npy', np.stack([mha_weight.cpu().numpy() for mha_weight in all_mha_weights_inference]), allow_pickle=False, fix_imports=False)
+    # Get the mean of each metric by variable
+    nse_final, rmse_final, pbias_final, kge_final = np.array(nse_final), np.array(rmse_final), np.array(pbias_final), np.array(kge_final)
     
-    # Pass target_y_hat to cpu for plotting purposes
-    tgt_y_hat = tgt_y_hat.cpu()
+    # Create a dictionary with the metrics
+    metrics = {
+        'Nash-Sutcliffe efficiency': np.mean(nse_final, axis=0),
+        'Root mean squared error': np.mean(rmse_final, axis=0),
+        'Percent bias': np.mean(pbias_final, axis=0),
+        'Kling-Gupta efficiency': np.mean(kge_final, axis=0)
+    }
 
-    tgt_y_truth, tgt_y_hat = tgt_y_truth.numpy(), tgt_y_hat.numpy()
+    # Convert the dictionary to a DataFrame
+    df = pd.DataFrame(metrics, index=['am', 'co', 'do', 'ph', 'pr', 'tu', 'wt'])
 
-    # Save tgt_plots, ground truth and predictions
-    if task_type == 'test':
-        np.save('plots_data/tgt_plots.npy', tgt_plots, allow_pickle=False, fix_imports=False)
-        np.save('plots_data/tgt_y_truth.npy', tgt_y_truth, allow_pickle=False, fix_imports=False)
-        np.save('plots_data/tgt_y_hat.npy', tgt_y_hat, allow_pickle=False, fix_imports=False)
-
+    # Print the DataFrame
+    print(f'\n-- {task_type}  results')
+    print(df)
 
 if __name__ == '__main__':
     
@@ -176,7 +174,7 @@ if __name__ == '__main__':
 
     # Run parameters
     lr = 0.001
-    epochs = 2
+    epochs = 1
 
     # Get device
     device = ('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
@@ -190,7 +188,7 @@ if __name__ == '__main__':
     training_val_upper_bound = datetime.datetime(2017, 12, 31)
 
     # Extract train/validation data
-    training_val_data = data[(training_val_lower_bound >= data.index) & (data.index <= training_val_upper_bound)]
+    training_val_data = data[(training_val_lower_bound <= data.index) & (data.index <= training_val_upper_bound)]
     
     # Calculate the percentage of data in the training_val_data subset
     total_data_range = (data.index.max() - data.index.min()).days
@@ -271,59 +269,49 @@ if __name__ == '__main__':
     # Instantiate early stopping
     early_stopping = utils.EarlyStopping(patience=30, verbose=True)
 
-    # Update model in the training process and test it
-    start_time = time.time()
-    df_training = pd.DataFrame(columns=('epoch', 'loss_train'))
-    df_validation = pd.DataFrame(columns=('epoch', 'loss_val'))
-    for t in range(epochs): # epochs is defined in the hyperparameters section above
-        print(f"Epoch {t+1}\n-------------------------------")
-        train(training_data, model, src_mask, memory_mask, tgt_mask, loss_function, optimizer, device, df_training, epoch=t)
-        epoch_val_loss = val(validation_data, model, src_mask, memory_mask, tgt_mask, loss_function, device, df_validation, epoch=t)
+    # # Update model in the training process and test it
+    # start_time = time.time()
+    # df_training = pd.DataFrame(columns=('epoch', 'loss_train'))
+    # df_validation = pd.DataFrame(columns=('epoch', 'loss_val'))
+    # for t in range(epochs): # epochs is defined in the hyperparameters section above
+    #     print(f"Epoch {t+1}\n-------------------------------")
+    #     train(training_data, model, src_mask, memory_mask, tgt_mask, loss_function, optimizer, device, df_training, epoch=t)
+    #     epoch_val_loss = val(validation_data, model, src_mask, memory_mask, tgt_mask, loss_function, device, df_validation, epoch=t)
 
-        # Early stopping
-        early_stopping(epoch_val_loss, model, path='checkpoints')
-        if early_stopping.early_stop:
-            print("Early stopping")
-            break
+    #     # Early stopping
+    #     early_stopping(epoch_val_loss, model, path='checkpoints')
+    #     if early_stopping.early_stop:
+    #         print("Early stopping")
+    #         break
         
-    print("Done! ---Execution time: %s seconds ---" % (time.time() - start_time))
+    # print("Done! ---Execution time: %s seconds ---" % (time.time() - start_time))
 
-    # Save results
-    utils.logger(run=run, batches=batch_size, d_model=d_model, n_heads=n_heads,
-                encoder_layers=n_encoder_layers, decoder_layers=n_decoder_layers,
-                dim_ll_encoder=in_features_encoder_linear_layer, dim_ll_decoder=in_features_decoder_linear_layer,
-                lr=lr, epochs=epochs)
+    # # Save results
+    # utils.logger(run=run, batches=batch_size, d_model=d_model, n_heads=n_heads,
+    #             encoder_layers=n_encoder_layers, decoder_layers=n_decoder_layers,
+    #             dim_ll_encoder=in_features_encoder_linear_layer, dim_ll_decoder=in_features_decoder_linear_layer,
+    #             lr=lr, epochs=epochs)
     
-    # Plot loss
-    plt.figure(1);plt.clf()
-    plt.plot(df_training['epoch'], df_training['loss_train'], '-o', label='loss train')
-    plt.plot(df_training['epoch'], df_validation['loss_val'], '-o', label='loss val')
-    plt.yscale('log')
-    plt.xlabel(r'epoch')
-    plt.ylabel(r'loss')
-    plt.legend()
-    # plt.show()
+    # # Plot loss
+    # plt.figure(1);plt.clf()
+    # plt.plot(df_training['epoch'], df_training['loss_train'], '-o', label='loss train')
+    # plt.plot(df_training['epoch'], df_validation['loss_val'], '-o', label='loss val')
+    # plt.yscale('log')
+    # plt.xlabel(r'epoch')
+    # plt.ylabel(r'loss')
+    # plt.legend()
+    # # plt.show()
 
-    plt.savefig(f'results/run_{run}/loss.png', dpi=300)
+    # plt.savefig(f'results/run_{run}/loss.png', dpi=300)
 
     # # Save the model
     # torch.save(model, "results/models/transformer_model.pth")
     # print("Saved PyTorch entire model to results/models/transformer_model.pth")
 
-    # # Load the model
-    # model = torch.load("results/models/transformer_model.pth").to(device)
-    # print('Loaded PyTorch model from results/models/transformer_model.pth')
+    # Load the model
+    model = torch.load("results/models/transformer_model.pth", map_location=torch.device('cpu')).to(device)
+    print('Loaded PyTorch model from results/models/transformer_model.pth')
 
     # Inference
-    tgt_plots_train_val, tgt_y_truth_train_val, tgt_y_hat_train_val = test(training_val_data, model, src_mask, memory_mask, tgt_mask, 'train_val', device)
-    tgt_plots_test, tgt_y_truth_test, tgt_y_hat_test = test(testing_data, model, src_mask, memory_mask, tgt_mask, 'test', device)
-
-    # Plot testing results
-    utils.plots_transformer(tgt_plots_train_val, tgt_y_truth_train_val, tgt_y_hat_train_val, tgt_percentage=0.2,
-                multiple=100, station=station, phase='train_val', run=run)
-    utils.plots_transformer(tgt_plots_test, tgt_y_truth_test, tgt_y_hat_test, tgt_percentage=0.2,
-                multiple=100, station=station, phase='test', run=run)
-
-    # Metrics
-    utils.metrics(tgt_y_truth_train_val, tgt_y_hat_train_val, 'train_val')
-    utils.metrics(tgt_y_truth_test, tgt_y_hat_test, 'test')
+    # test(training_val_data, model, src_mask, memory_mask, tgt_mask, 'train_val', device)
+    test(testing_data, model, src_mask, memory_mask, tgt_mask, 'test', device)

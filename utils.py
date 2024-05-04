@@ -210,9 +210,9 @@ def get_nash_sutcliffe_efficiency(observed, modeled):
 def get_multivariate_nash_sutcliffe_efficiency(multivariate_observed, multivariate_modeled):
 
     multivariate_nse = []
-    for i in range(multivariate_observed.shape[2]):
-        nse = get_nash_sutcliffe_efficiency(multivariate_observed[:, :, i].flatten(), 
-                                            multivariate_modeled[:, :, i].flatten())
+    for i in range(multivariate_observed.shape[1]):
+        nse = get_nash_sutcliffe_efficiency(multivariate_observed[:, i].flatten(), 
+                                            multivariate_modeled[:, i].flatten())
         multivariate_nse.append(nse)
     
     return multivariate_nse
@@ -224,9 +224,9 @@ def get_pbias(observed, modeled):
 def get_multivariate_pbias(multivariate_observed, multivariate_modeled):
 
     multivariate_pbias = []
-    for i in range(multivariate_observed.shape[2]):
-        pbias = get_pbias(multivariate_observed[:, :, i].flatten(), 
-                        multivariate_modeled[:, :, i].flatten())
+    for i in range(multivariate_observed.shape[1]):
+        pbias = get_pbias(multivariate_observed[:, i].flatten(), 
+                        multivariate_modeled[:, i].flatten())
         multivariate_pbias.append(pbias)
     
     return multivariate_pbias
@@ -242,9 +242,9 @@ def get_kge(observed, modeled):
 def get_multivariate_kge(multivariate_modeled, multivariate_observed):
 
     multivariate_kge = []
-    for i in range(multivariate_observed.shape[2]):
-        kge = get_kge(multivariate_observed[:, :, i].flatten(), 
-                    multivariate_modeled[:, :, i].flatten())
+    for i in range(multivariate_observed.shape[1]):
+        kge = get_kge(multivariate_observed[:, i].flatten(), 
+                    multivariate_modeled[:, i].flatten())
         multivariate_kge.append(kge)
     
     return multivariate_kge
@@ -252,14 +252,14 @@ def get_multivariate_kge(multivariate_modeled, multivariate_observed):
 def get_multivariate_rmse(multivariate_modeled, multivariate_observed):
 
     multivariate_rmse = []
-    for i in range(multivariate_observed.shape[2]):
-        rmse = np.sqrt(mean_squared_error(multivariate_observed[:, :, i].flatten(), 
-                                        multivariate_modeled[:, :, i].flatten()))
+    for i in range(multivariate_observed.shape[1]):
+        rmse = np.sqrt(mean_squared_error(multivariate_observed[:, i].flatten(), 
+                                        multivariate_modeled[:, i].flatten()))
         multivariate_rmse.append(rmse)
     
     return multivariate_rmse
 
-def metrics(truth, hat, phase):
+def metrics_transformer(truth, hat, phase):
     """
     Calculate the Nash-Sutcliffe efficiency, root mean square error,
     percent bias, and Kling-Gupta efficiency by for each variate of
@@ -282,6 +282,36 @@ def metrics(truth, hat, phase):
     pbias = get_multivariate_pbias(truth, hat)
     kge = get_multivariate_kge(truth, hat)
     
+    # print(f'\n-- {phase}  results')
+    # print(f'Nash-Sutcliffe efficiency: {nse}')
+    # print(f'Root mean square error: {rmse}')
+    # print(f'Percent bias: {pbias}')
+    # print(f'Kling-Gupta efficiency: {kge}')
+
+    return nse, rmse, pbias, kge
+
+def metrics_cnn(truth, hat, phase):
+    """
+    Calculate the Nash-Sutcliffe efficiency, root mean square error,
+    percent bias, and Kling-Gupta efficiency of the model's predictions.
+    ----------
+    Arguments:
+    truth (np.array): np.array, the observed values
+    hat (np.array): the model's predictions
+    phase (str): the phase of the data. Must be one of "train", "val", or "test"
+    
+    Returns:
+    nse (float): Nash-Sutcliffe efficiency
+    rmse (float): root mean square error
+    pbias (float): percent bias
+    kge (float): Kling-Gupta efficiency
+    """
+    
+    nse = get_nash_sutcliffe_efficiency(truth, hat)
+    rmse = np.sqrt(mean_squared_error(truth, hat))
+    pbias = get_pbias(truth, hat)
+    kge = get_kge(truth, hat)
+    
     print(f'\n-- {phase}  results')
     print(f'Nash-Sutcliffe efficiency: {nse}')
     print(f'Root mean square error: {rmse}')
@@ -290,52 +320,80 @@ def metrics(truth, hat, phase):
 
     return nse, rmse, pbias, kge
 
-def plots_transformer(tgt, truth, hat, tgt_percentage, multiple, station, phase, run):
+def plots_transformer(date, src, truth, hat, weights, tgt_percentage, station, phase, instance):
     
     """
     Plot the observed and predicted values
     ----------
     Arguments:
-    tgt (np.array): np.array, the ground truth values before the prediction
+    src (np.array): np.array, the src values before the prediction
     truth (np.array): np.array, the observed values during the prediction
     hat (np.array): the model's predictions
+    weights (np.array): the weights of the model
     tgt_percentage (float): the percentage of the tgt values to plot
     multiple (int): the multiple of the tgt values to plot
     station (int): the station number
     phase (str): the phase of the data. Must be one of "train", "val", or "test"
-    run (int): the run number defined by the user
+    instance (int): the instance number
 
     Returns:
     None
     """
 
-    for i in range(len(tgt)):
-        
-        if i % multiple == 0:
+    # Subset the last row of the weights
+    weights = weights[-1]
+    
+    # Concatenate the src with the tgt (truth) values 
+    ground_truth = np.concatenate((src[-int(len(src)*tgt_percentage):], truth))
+    
+    # Plot the truth and the prediction
+    colors_ground_truth = ['red', 'dodgerblue', 'mediumpurple', 'dimgrey', 'chocolate', 'goldenrod', 'green']
+    colors_hat = ['salmon', 'lightskyblue', 'plum', 'darkgrey', 'orange', 'gold', 'yellowgreen']
+    labels = ['am', 'co', 'do', 'ph', 'pr', 'tu', 'wt']
 
-            ground_truth = np.concatenate((tgt[-int(len(tgt)*tgt_percentage):], truth))
+    # Create the plot
+    fig, ax1 = plt.subplots(figsize=(10, 6))
+    ax2 = ax1.twinx()
 
-            # Plot the truth and the prediction
-            colors_ground_truth = ['red', 'dodgerblue', 'mediumpurple', 'dimgrey', 'chocolate', 'goldenrod', 'green']
-            colors_hat = ['salmon', 'lightskyblue', 'plum', 'darkgrey', 'orange', 'gold', 'yellowgreen']
-            labels = ['am', 'co', 'do', 'ph', 'pr', 'tu', 'wt']
+    # Plot bars on primary axes
+    x_data = range(len(src))
+    bars = ax1.bar(x_data, weights, color='darkseagreen', width=0.7, label='Weights')
 
-            # Loop over each column of the truth
-            for i in range(ground_truth.shape[1]):
-                plt.plot(ground_truth[:, i], label=f'{labels[i]}', color=colors_ground_truth[i])
+    # Invert the y-axis for bars
+    ax1.invert_yaxis()
 
-            # Loop over each column of the prediction and plot it starting when the concatenated part of tgt ends
-            tgt_length = int(len(tgt)*tgt_percentage)
-            for i in range(hat.shape[1]):
-                plt.plot(range(tgt_length, tgt_length + hat.shape[0]), hat[:, i], color=colors_hat[i])
+    # Loop over each column of the truth
+    for i in range(ground_truth.shape[1]):
+        ax2.plot(ground_truth[:, i], label=f'{labels[i]}', color=colors_ground_truth[i])
 
-            plt.title(f'Results for instance {i} of station {station}')
-            plt.xlabel(r'time (15 min)')
-            plt.ylabel(r'y')
-            plt.legend()
-            plt.show()
+    # Loop over each column of the prediction and plot it starting when the concatenated part of tgt ends
+    tgt_length = int(len(src)*tgt_percentage)
+    for i in range(hat.shape[1]):
+        ax2.plot(range(tgt_length, tgt_length + hat.shape[0]), hat[:, i], color=colors_hat[i])
 
-            # plt.savefig(f'results/run_{run}/{phase}.png', dpi=300)
+    plt.title(f'Results for instance {date.day}-{date.month}-{date.year} of station {station}')
+    plt.xlabel(r'time (15 min)')
+    ax1.set_ylabel('Weights', color='dimgray')
+    ax2.set_ylabel(r'Values', color='dimgray')
+    
+    bars, labels0 = ax1.get_legend_handles_labels()  # Get bars and labels for legend
+    lines1, labels1 = ax2.get_legend_handles_labels()  # Get lines and labels for legend
+
+    # Concatenate the bars and lines, and their respective labels
+    handles = bars + lines1
+    labels = labels0 + labels1
+
+    # Add legend to primary axes
+    plt.legend(handles, labels, loc='upper left')  # Add legend to primary axes
+    
+    # Show the plot
+    plt.tight_layout()
+    # plt.show()
+
+    plt.savefig(f'plots/tplot_{date.day}_{date.month}_{date.year}.png', dpi=300)
+
+    # Close the plot
+    plt.close(fig)
 
 def plots_cnn(truth, hat, station, phase, run):
     
@@ -360,7 +418,7 @@ def plots_cnn(truth, hat, station, phase, run):
     plt.legend()
     # plt.show()
 
-    plt.savefig(f'results/run_{run}/{phase}.png', dpi=300)
+    plt.savefig(f'plots/cplot_{phase}.png', dpi=300)
 
 def logger(run, batches, d_model, n_heads, encoder_layers, decoder_layers, dim_ll_encoder, dim_ll_decoder, lr, epochs):
 
@@ -393,84 +451,3 @@ def logger(run, batches, d_model, n_heads, encoder_layers, decoder_layers, dim_l
 
         # Close the file
         f.close()
-
-def weights_plot(iteration: int):
-
-    # Read weights data
-    weights = np.load('data_plots/all_sa_encoder_weights.npy', allow_pickle=True, fix_imports=True)
-
-    # Define dates for the X-axis
-    start_date = pd.to_datetime('2007-09-30') - pd.DateOffset(days=1461) # To include the 4 years before the first data point predicted
-    dates = pd.date_range(start=start_date, periods=weights.shape[0], freq='D')
-
-    # Subset the last row of the weights
-    weights = weights[iteration][0][-1]
-
-    # Split the data
-    days, weeks, months, years = weights[-30:], weights[-42:-30], weights[-50:-42], weights[-53:-50]
-
-    # Repeat the elements
-    weeks_repeated, months_repeated, years_repeated = np.repeat(weeks, 8), np.repeat(months, 30), np.repeat(years, 365)
-
-    # Concatenate all the arrays
-    weights = np.concatenate((years_repeated, months_repeated, weeks_repeated, days))
-
-    # Load the src
-    src = np.load(f'plots_data/src_p_{iteration}.npy', allow_pickle=True, fix_imports=True)[0]
-
-    # Load the tgt_p
-    tgt_p = np.load(f'plots_data/tgt_p_{iteration}.npy', allow_pickle=True, fix_imports=True)[0]
-
-    # Load the tgt_y_hat
-    tgt_y_hat = np.load(f'plots_data/tgt_y_hat_{iteration}.npy', allow_pickle=True, fix_imports=True)[0]
-
-    # Add the predict data (tgt_y_hat) to the tgt_p and update the length of the weights and src
-    weights = np.append(weights, np.empty(1))
-    src = np.append(src, np.empty(1))
-    tgt_p = np.append(tgt_p, tgt_y_hat)
-
-    # Create the plot
-    fig, ax1 = plt.subplots(figsize=(10, 6))
-    ax2 = ax1.twinx()
-
-    # Plot bars on primary axes
-    x_data = dates[iteration:iteration+1461+1]
-    bars = ax1.bar(x_data, weights, color='darkseagreen', width=0.7, label='Weights')
-
-    # Invert the y-axis for bars
-    ax1.invert_yaxis() 
-
-    # Plot lines on secondary axes
-    ax2.plot(x_data, src, color='dimgray', linewidth=1, label='SWIT')  # Add label for clarity
-    ax2.plot(x_data, src, color='salmon', linewidth=1, label='PET')  # Adjust marker and label
-    ax2.plot(x_data, tgt_p, color='cornflowerblue',linewidth=1, label='Q')  # Adjust marker and label
-
-    # Set labels and title
-    ax1.set_xlabel('Days before')
-    ax1.set_ylabel('Weights', color='dimgray')
-    ax2.set_ylabel('SWIT and PET values', color='dimgray')
-    plt.title(f'Q {x_data[-1].date()}')
-
-    # Additional customization
-    # ax1.tick_params('y', colors='darkseagreen')  # Set color for right y-axis ticks
-    # ax2.tick_params('y', colors='black')  # Set color for left y-axis ticks
-    # Get bars and labels for legend
-    bars, labels0 = ax1.get_legend_handles_labels()  # Get bars and labels for legend
-    lines1, labels1 = ax2.get_legend_handles_labels()  # Get lines and labels for legend
-
-    # Concatenate the bars and lines, and their respective labels
-    handles = bars + lines1
-    labels = labels0 + labels1
-
-    # Add legend to primary axes
-    ax1.legend(handles, labels, loc='upper left')  # Add legend to primary axes
-
-    # Show the plot
-    plt.tight_layout()
-    # plt.show()
-
-    # Save the plot
-    fig.savefig(f'plots/weights_plot_{iteration}.png')
-
-    # Close the plot
-    plt.close(fig)
