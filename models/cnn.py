@@ -230,10 +230,10 @@ class UNet(nn.Module):
         
         self.outconv = nn.Conv2d(channels, n_classes, kernel_size=1)
 
-    def forward(self, x):
+    def forward(self, src):
 
         # Encoder
-        xencoder1 = self.encoder1(x)
+        xencoder1 = self.encoder1(src)
         xpool1 = self.pool1(xencoder1)
 
         xencoder2 = self.encoder2(xpool1)

@@ -144,7 +144,7 @@ if __name__ == '__main__':
     training_val_upper_bound = datetime.datetime(2017, 12, 31)
 
     # Extract train/validation data
-    training_val_data = data[(training_val_lower_bound >= data.index) & (data.index <= training_val_upper_bound)]
+    training_val_data = data[(training_val_lower_bound <= data.index) & (data.index <= training_val_upper_bound)]
     
     # Calculate the percentage of data in the training_val_data subset
     total_data_range = (data.index.max() - data.index.min()).days
@@ -177,6 +177,7 @@ if __name__ == '__main__':
     training_val_data = DataLoader(training_val_data, batch_size=1, shuffle=False) # For testing puporses
 
     # Instantiate the transformer model and send it to device
+    print(n_variables, channels, n_classes)
     model = cnn.UNet(n_variables=n_variables, channels=channels, n_classes=n_classes).to(device)
 
     # Print model and number of parameters
@@ -207,28 +208,28 @@ if __name__ == '__main__':
         
     print("Done! ---Execution time: %s seconds ---" % (time.time() - start_time))
 
-    # # Save the model
-    # torch.save(model, "results/models/unet_model.pth")
-    # print("Saved PyTorch entire model to models/unet_model.pth")
+    # # # Save the model
+    # # torch.save(model, "results/models/unet_model.pth")
+    # # print("Saved PyTorch entire model to models/unet_model.pth")
 
-    # # Load the model
-    # model = torch.load("results/models/unet_model.pth").to(device)
-    # print('Loaded PyTorch model from models/unet_model.pth')
+    # # # Load the model
+    # # model = torch.load("results/models/unet_model.pth").to(device)
+    # # print('Loaded PyTorch model from models/unet_model.pth')
 
-    # Inference
-    tgt_truth_train_val, tgt_hat_train_val = test(training_val_data, model, 'train_val', device)
-    tgt_truth_test, tgt_hat_test = test(testing_data, model, 'test', device)
+    # # Inference
+    # tgt_truth_train_val, tgt_hat_train_val = test(training_val_data, model, 'train_val', device)
+    # tgt_truth_test, tgt_hat_test = test(testing_data, model, 'test', device)
 
-    # # Save results
-    # utils.logger(run=run, batches=batch_size, d_model=d_model, n_heads=n_heads,
-    #             encoder_layers=n_encoder_layers, decoder_layers=n_decoder_layers,
-    #             dim_ll_encoder=in_features_encoder_linear_layer, dim_ll_decoder=in_features_decoder_linear_layer,
-    #             lr=lr, epochs=epochs)
+    # # # Save results
+    # # utils.logger(run=run, batches=batch_size, d_model=d_model, n_heads=n_heads,
+    # #             encoder_layers=n_encoder_layers, decoder_layers=n_decoder_layers,
+    # #             dim_ll_encoder=in_features_encoder_linear_layer, dim_ll_decoder=in_features_decoder_linear_layer,
+    # #             lr=lr, epochs=epochs)
 
-    # Plot testing results
-    utils.plots_cnn(tgt_truth_train_val, tgt_hat_train_val, station=station, phase='train_val', run=run)
-    utils.plots_cnn(tgt_truth_test, tgt_hat_test, station=station, phase='test', run=run)
+    # # Plot testing results
+    # utils.plots_cnn(tgt_truth_train_val, tgt_hat_train_val, station=station, phase='train_val', run=run)
+    # utils.plots_cnn(tgt_truth_test, tgt_hat_test, station=station, phase='test', run=run)
 
-    # Metrics
-    utils.metrics(tgt_truth_train_val, tgt_hat_train_val, 'train_val')
-    utils.metrics(tgt_truth_test, tgt_hat_test, 'test')
+    # # Metrics
+    # utils.metrics(tgt_truth_train_val, tgt_hat_train_val, 'train_val')
+    # utils.metrics(tgt_truth_test, tgt_hat_test, 'test')
