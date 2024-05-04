@@ -397,7 +397,7 @@ def logger(run, batches, d_model, n_heads, encoder_layers, decoder_layers, dim_l
 def weights_plot(iteration: int):
 
     # Read weights data
-    weights = np.load('results/all_sa_encoder_weights.npy', allow_pickle=True, fix_imports=True)
+    weights = np.load('data_plots/all_sa_encoder_weights.npy', allow_pickle=True, fix_imports=True)
 
     # Define dates for the X-axis
     start_date = pd.to_datetime('2007-09-30') - pd.DateOffset(days=1461) # To include the 4 years before the first data point predicted
@@ -416,13 +416,13 @@ def weights_plot(iteration: int):
     weights = np.concatenate((years_repeated, months_repeated, weeks_repeated, days))
 
     # Load the src
-    src = np.load(f'results/src_p_{iteration}.npy', allow_pickle=True, fix_imports=True)[0]
+    src = np.load(f'plots_data/src_p_{iteration}.npy', allow_pickle=True, fix_imports=True)[0]
 
     # Load the tgt_p
-    tgt_p = np.load(f'results/tgt_p_{iteration}.npy', allow_pickle=True, fix_imports=True)[0]
+    tgt_p = np.load(f'plots_data/tgt_p_{iteration}.npy', allow_pickle=True, fix_imports=True)[0]
 
     # Load the tgt_y_hat
-    tgt_y_hat = np.load(f'results/tgt_y_hat_{iteration}.npy', allow_pickle=True, fix_imports=True)[0]
+    tgt_y_hat = np.load(f'plots_data/tgt_y_hat_{iteration}.npy', allow_pickle=True, fix_imports=True)[0]
 
     # Add the predict data (tgt_y_hat) to the tgt_p and update the length of the weights and src
     weights = np.append(weights, np.empty(1))

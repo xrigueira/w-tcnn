@@ -208,12 +208,12 @@ if __name__ == '__main__':
     print("Done! ---Execution time: %s seconds ---" % (time.time() - start_time))
 
     # # Save the model
-    # torch.save(model, "results/models/model.pth")
-    # print("Saved PyTorch entire model to models/model.pth")
+    # torch.save(model, "results/models/unet_model.pth")
+    # print("Saved PyTorch entire model to models/unet_model.pth")
 
     # # Load the model
-    # model = torch.load("results/models/model.pth").to(device)
-    # print('Loaded PyTorch model from models/model.pth')
+    # model = torch.load("results/models/unet_model.pth").to(device)
+    # print('Loaded PyTorch model from models/unet_model.pth')
 
     # Inference
     tgt_truth_train_val, tgt_hat_train_val = test(training_val_data, model, 'train_val', device)

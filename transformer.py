@@ -95,27 +95,28 @@ def test(dataloader, model, src_mask, memory_mask, tgt_mask, task_type, device):
     with torch.no_grad():
         for i, sample in enumerate(dataloader):
             src, tgt, tgt_y, src_p, tgt_p = sample
+
             src, tgt, tgt_y, src_p, tgt_p = src.to(device), tgt.to(device), tgt_y.to(device), src_p.to(device), tgt_p.to(device)
 
             pred, sa_weights_encoder, sa_weights, mha_weights = model(src=src, tgt=tgt, src_mask=src_mask, memory_mask=memory_mask, tgt_mask=tgt_mask)
-            # all_sa_weights_encoder_inference.append(sa_weights_encoder)
-            # all_sa_weights_inference.append(sa_weights)
-            # all_mha_weights_inference.append(mha_weights)
+            all_sa_weights_encoder_inference.append(sa_weights_encoder)
+            all_sa_weights_inference.append(sa_weights)
+            all_mha_weights_inference.append(mha_weights)
             pred = pred.to(device)
 
             # Save src, tgt and tgt_y, and pred for plotting purposes
             if task_type == 'test':
-                np.save(f'results/src_p_{i}.npy', src_p.cpu(), allow_pickle=False, fix_imports=False)
-                np.save(f'results/tgt_p_{i}.npy', tgt_p.cpu(), allow_pickle=False, fix_imports=False)
-                np.save(f'results/tgt_y_hat_{i}.npy', pred.cpu(), allow_pickle=False, fix_imports=False)
+                np.save(f'plots_data/src_p_{i}.npy', src_p.cpu(), allow_pickle=False, fix_imports=False)
+                np.save(f'plots_data/tgt_p_{i}.npy', tgt_p.cpu(), allow_pickle=False, fix_imports=False)
+                np.save(f'plots_data/tgt_y_hat_{i}.npy', pred.cpu(), allow_pickle=False, fix_imports=False)
             
             tgt_y_hat[i] = pred
     
-    # Save inference attention for the last step
+    # Save inference attention
     if task_type == 'test':
-        np.save('results/all_sa_encoder_weights.npy', np.stack([sa_weight_encoder.cpu().numpy() for sa_weight_encoder in all_sa_weights_encoder_inference]), allow_pickle=False, fix_imports=False)
-        np.save('results/all_sa_weights.npy', np.stack([sa_weight.cpu().numpy() for sa_weight in all_sa_weights_inference]), allow_pickle=False, fix_imports=False)
-        np.save('results/all_mha_weights.npy', np.stack([mha_weight.cpu().numpy() for mha_weight in all_mha_weights_inference]), allow_pickle=False, fix_imports=False)
+        np.save('plots_data/all_sa_encoder_weights.npy', np.stack([sa_weight_encoder.cpu().numpy() for sa_weight_encoder in all_sa_weights_encoder_inference]), allow_pickle=False, fix_imports=False)
+        np.save('plots_data/all_sa_weights.npy', np.stack([sa_weight.cpu().numpy() for sa_weight in all_sa_weights_inference]), allow_pickle=False, fix_imports=False)
+        np.save('plots_data/all_mha_weights.npy', np.stack([mha_weight.cpu().numpy() for mha_weight in all_mha_weights_inference]), allow_pickle=False, fix_imports=False)
     
     # Pass target_y_hat to cpu for plotting purposes
     tgt_y_hat = tgt_y_hat.cpu()
@@ -124,11 +125,10 @@ def test(dataloader, model, src_mask, memory_mask, tgt_mask, task_type, device):
 
     # Save tgt_plots, ground truth and predictions
     if task_type == 'test':
-        np.save('tgt_plots.npy', tgt_plots, allow_pickle=False, fix_imports=False)
-        np.save('tgt_y_truth.npy', tgt_y_truth, allow_pickle=False, fix_imports=False)
-        np.save('tgt_y_hat.npy', tgt_y_hat, allow_pickle=False, fix_imports=False)
-    
-    return tgt_plots, tgt_y_truth, tgt_y_hat
+        np.save('plots_data/tgt_plots.npy', tgt_plots, allow_pickle=False, fix_imports=False)
+        np.save('plots_data/tgt_y_truth.npy', tgt_y_truth, allow_pickle=False, fix_imports=False)
+        np.save('plots_data/tgt_y_hat.npy', tgt_y_hat, allow_pickle=False, fix_imports=False)
+
 
 if __name__ == '__main__':
     
@@ -288,17 +288,23 @@ if __name__ == '__main__':
         
     print("Done! ---Execution time: %s seconds ---" % (time.time() - start_time))
 
-    # # Plot loss
-    # plt.figure(1);plt.clf()
-    # plt.plot(df_training['epoch'], df_training['loss_train'], '-o', label='loss train')
-    # plt.plot(df_training['epoch'], df_validation['loss_val'], '-o', label='loss val')
-    # plt.yscale('log')
-    # plt.xlabel(r'epoch')
-    # plt.ylabel(r'loss')
-    # plt.legend()
-    # # plt.show()
+    # Save results
+    utils.logger(run=run, batches=batch_size, d_model=d_model, n_heads=n_heads,
+                encoder_layers=n_encoder_layers, decoder_layers=n_decoder_layers,
+                dim_ll_encoder=in_features_encoder_linear_layer, dim_ll_decoder=in_features_decoder_linear_layer,
+                lr=lr, epochs=epochs)
+    
+    # Plot loss
+    plt.figure(1);plt.clf()
+    plt.plot(df_training['epoch'], df_training['loss_train'], '-o', label='loss train')
+    plt.plot(df_training['epoch'], df_validation['loss_val'], '-o', label='loss val')
+    plt.yscale('log')
+    plt.xlabel(r'epoch')
+    plt.ylabel(r'loss')
+    plt.legend()
+    # plt.show()
 
-    # plt.savefig(f'results/run_{run}/loss.png', dpi=300)
+    plt.savefig(f'results/run_{run}/loss.png', dpi=300)
 
     # # Save the model
     # torch.save(model, "results/models/transformer_model.pth")
@@ -311,19 +317,13 @@ if __name__ == '__main__':
     # Inference
     tgt_plots_train_val, tgt_y_truth_train_val, tgt_y_hat_train_val = test(training_val_data, model, src_mask, memory_mask, tgt_mask, 'train_val', device)
     tgt_plots_test, tgt_y_truth_test, tgt_y_hat_test = test(testing_data, model, src_mask, memory_mask, tgt_mask, 'test', device)
-    
-    # # Save results
-    # utils.logger(run=run, batches=batch_size, d_model=d_model, n_heads=n_heads,
-    #             encoder_layers=n_encoder_layers, decoder_layers=n_decoder_layers,
-    #             dim_ll_encoder=in_features_encoder_linear_layer, dim_ll_decoder=in_features_decoder_linear_layer,
-    #             lr=lr, epochs=epochs)
 
     # Plot testing results
-    # utils.plots_transformer(tgt_plots_train_val, tgt_y_truth_train_val, tgt_y_hat_train_val, tgt_percentage=0.2,
-    #             multiple=100, station=station, phase='train_val', run=run)
-    # utils.plots_transformer(tgt_plots_test, tgt_y_truth_test, tgt_y_hat_test, tgt_percentage=0.2,
-    #             multiple=100, station=station, phase='test', run=run)
+    utils.plots_transformer(tgt_plots_train_val, tgt_y_truth_train_val, tgt_y_hat_train_val, tgt_percentage=0.2,
+                multiple=100, station=station, phase='train_val', run=run)
+    utils.plots_transformer(tgt_plots_test, tgt_y_truth_test, tgt_y_hat_test, tgt_percentage=0.2,
+                multiple=100, station=station, phase='test', run=run)
 
-    # # Metrics
-    # utils.metrics(tgt_y_truth_train_val, tgt_y_hat_train_val, 'train_val')
-    # utils.metrics(tgt_y_truth_test, tgt_y_hat_test, 'test')
+    # Metrics
+    utils.metrics(tgt_y_truth_train_val, tgt_y_hat_train_val, 'train_val')
+    utils.metrics(tgt_y_truth_test, tgt_y_hat_test, 'test')
