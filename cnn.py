@@ -21,6 +21,8 @@ def train(dataloader, model, loss_function, optimizer, device, df_training, epoc
     training_loss = [] # For plotting purposes
     for i, batch in enumerate(dataloader):
         src, tgt = batch
+        src = src.unsqueeze(0).permute(1, 0, 2, 3) # Change the shape of the tensor to (batch_size, channels, window_size, num_features)
+        tgt = tgt.unsqueeze(1) # Change the shape of the tensor to (batch_size, 1, 1, 1) to avoid broadcasting issues
         src, tgt = src.to(device), tgt.to(device)
 
         # Zero out gradients for every batch
@@ -54,6 +56,8 @@ def val(dataloader, model, loss_function, device, df_validation, epoch):
     with torch.no_grad():
         for batch in dataloader:
             src, tgt = batch
+            src = src.unsqueeze(0).permute(1, 0, 2, 3) # Change the shape of the tensor to (batch_size, channels, window_size, num_features)
+            tgt = tgt.unsqueeze(1) # Change the shape of the tensor to (batch_size, 1, 1, 1) to avoid broadcasting issues
             src, tgt = src.to(device), tgt.to(device)
             
             pred = model(src=src)
@@ -85,6 +89,8 @@ def test(dataloader, model, device):
     with torch.no_grad():
         for i, sample in enumerate(dataloader):
             src, tgt = sample
+            src = src.unsqueeze(0).permute(1, 0, 2, 3) # Change the shape of the tensor to (batch_size, channels, window_size, num_features)
+            tgt = tgt.unsqueeze(1) # Change the shape of the tensor to (batch_size, 1, 1, 1) to avoid broadcasting issues
             src, tgt = src.to(device), tgt.to(device)
             
             pred = model(src=src)
@@ -110,7 +116,7 @@ if __name__ == '__main__':
     run = 1
 
     # Hyperparameters for the model
-    batch_size = 64
+    batch_size = 32
     validation_size = 0.125
     variables = [f'ammonium_{station}', f'conductivity_{station}', 
                 f'dissolved_oxygen_{station}', f'pH_{station}', 
@@ -123,8 +129,9 @@ if __name__ == '__main__':
     cutoff_date = datetime.datetime(2005, 1, 1)
 
     n_variables = len(variables) - 1 # Exclude the label
-    channels = 1
-    n_classes = 2 # Normal and anomaly
+    input_channels = 1
+    channels = 8
+    n_classes = 1 # Normal and anomaly
     window_size = 96 # Used to slice data into sub-sequences
     step_size = 1 # Step size, i.e. how many time steps does the moving window move at each step
 
@@ -178,11 +185,11 @@ if __name__ == '__main__':
 
     # Instantiate the transformer model and send it to device
     print(n_variables, channels, n_classes)
-    model = cnn.UNet(n_variables=n_variables, channels=channels, n_classes=n_classes).to(device)
+    model = cnn.UNet(input_channels=input_channels, channels=channels, n_classes=n_classes).to(device)
 
     # Print model and number of parameters
-    print('Defined model:\n', model)
-    utils.count_parameters(model)
+    # print('Defined model:\n', model)
+    # utils.count_parameters(model)
 
     # Define optimizer and loss function
     loss_function = nn.MSELoss()

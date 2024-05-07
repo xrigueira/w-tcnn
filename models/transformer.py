@@ -6,6 +6,10 @@ import torch.nn.functional as F
 from typing import Optional, Any, Union, Callable, Tuple
 from torch import Tensor
 
+"""Explanability is carried out through the weights of the self-attention mechanism.
+There is also this paper about a specific library for explainability in transformers:
+https://aclanthology.org/2021.acl-demo.30.pdf"""
+
 class PositionalEncoder(nn.Module):
     
     """
