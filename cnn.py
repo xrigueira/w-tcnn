@@ -9,6 +9,9 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
+import warnings
+warnings.filterwarnings("ignore")
+
 import utils
 import dataset as ds
 import models.cnn as cnn
@@ -22,7 +25,6 @@ def train(dataloader, model, loss_function, optimizer, device, df_training, epoc
     for i, batch in enumerate(dataloader):
         src, tgt = batch
         src = src.unsqueeze(0).permute(1, 0, 2, 3) # Change the shape of the tensor to (batch_size, channels, window_size, num_features)
-        tgt = tgt.unsqueeze(1) # Change the shape of the tensor to (batch_size, 1, 1, 1) to avoid broadcasting issues
         src, tgt = src.to(device), tgt.to(device)
 
         # Zero out gradients for every batch
@@ -57,7 +59,6 @@ def val(dataloader, model, loss_function, device, df_validation, epoch):
         for batch in dataloader:
             src, tgt = batch
             src = src.unsqueeze(0).permute(1, 0, 2, 3) # Change the shape of the tensor to (batch_size, channels, window_size, num_features)
-            tgt = tgt.unsqueeze(1) # Change the shape of the tensor to (batch_size, 1, 1, 1) to avoid broadcasting issues
             src, tgt = src.to(device), tgt.to(device)
             
             pred = model(src=src)
@@ -74,7 +75,7 @@ def val(dataloader, model, loss_function, device, df_validation, epoch):
     return epoch_val_loss
 
 # Define the test function
-def test(dataloader, model, device):
+def test(dataloader, model, task_type, device):
     
     # Get ground truth
     tgt_truth = torch.zeros(len(dataloader.dataset), 1)
@@ -90,7 +91,6 @@ def test(dataloader, model, device):
         for i, sample in enumerate(dataloader):
             src, tgt = sample
             src = src.unsqueeze(0).permute(1, 0, 2, 3) # Change the shape of the tensor to (batch_size, channels, window_size, num_features)
-            tgt = tgt.unsqueeze(1) # Change the shape of the tensor to (batch_size, 1, 1, 1) to avoid broadcasting issues
             src, tgt = src.to(device), tgt.to(device)
             
             pred = model(src=src)
@@ -129,15 +129,17 @@ if __name__ == '__main__':
     cutoff_date = datetime.datetime(2005, 1, 1)
 
     n_variables = len(variables) - 1 # Exclude the label
-    input_channels = 1
-    channels = 8
-    n_classes = 1 # Normal and anomaly
     window_size = 96 # Used to slice data into sub-sequences
     step_size = 1 # Step size, i.e. how many time steps does the moving window move at each step
+    
+    input_channels = 1
+    channels = 2
+    d_fc = 1024 
+    n_classes = 1 # Anomaly or non anomaly
 
     # Run parameters
     lr = 0.001
-    epochs = 2
+    epochs = 1
 
     # Get device
     device = ('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
@@ -184,10 +186,11 @@ if __name__ == '__main__':
     training_val_data = DataLoader(training_val_data, batch_size=1, shuffle=False) # For testing puporses
 
     # Instantiate the transformer model and send it to device
-    print(n_variables, channels, n_classes)
-    model = cnn.UNet(input_channels=input_channels, channels=channels, n_classes=n_classes).to(device)
+    n_variables, window_size, n_classes, input_channels, channels, d_fc
+    model = cnn.UNet(n_variables=n_variables, window_size=window_size, n_classes=n_classes,
+                    input_channels=input_channels, channels=channels, d_fc=d_fc).to(device)
 
-    # Print model and number of parameters
+    # # Print model and number of parameters
     # print('Defined model:\n', model)
     # utils.count_parameters(model)
 
@@ -212,31 +215,49 @@ if __name__ == '__main__':
         if early_stopping.early_stop:
             print("Early stopping")
             break
-        
-    print("Done! ---Execution time: %s seconds ---" % (time.time() - start_time))
+    
+    train_val_time = time.time() - start_time
+    print("Done! ---Train/val time: %s seconds ---" % (train_val_time))
 
-    # # # Save the model
-    # # torch.save(model, "results/models/unet_model.pth")
-    # # print("Saved PyTorch entire model to models/unet_model.pth")
+    # Save results
+    utils.logger_cnn(run=run, batches=batch_size, input_channels=input_channels, channels=channels, d_fc=d_fc, lr=lr, epochs=epochs)
 
-    # # # Load the model
-    # # model = torch.load("results/models/unet_model.pth").to(device)
-    # # print('Loaded PyTorch model from models/unet_model.pth')
+    # Plot loss
+    plt.figure(1);plt.clf()
+    plt.plot(df_training['epoch'], df_training['loss_train'], '-o', label='loss train')
+    plt.plot(df_training['epoch'], df_validation['loss_val'], '-o', label='loss val')
+    plt.yscale('log')
+    plt.xlabel(r'epoch')
+    plt.ylabel(r'loss')
+    plt.legend()
+    # plt.show()
 
-    # # Inference
-    # tgt_truth_train_val, tgt_hat_train_val = test(training_val_data, model, 'train_val', device)
-    # tgt_truth_test, tgt_hat_test = test(testing_data, model, 'test', device)
+    plt.savefig(f'results/run_cnn_{run}/loss.png', dpi=300)
 
-    # # # Save results
-    # # utils.logger(run=run, batches=batch_size, d_model=d_model, n_heads=n_heads,
-    # #             encoder_layers=n_encoder_layers, decoder_layers=n_decoder_layers,
-    # #             dim_ll_encoder=in_features_encoder_linear_layer, dim_ll_decoder=in_features_decoder_linear_layer,
-    # #             lr=lr, epochs=epochs)
+    # # Save the model
+    # torch.save(model, "results/models/unet_model.pth")
+    # print("Saved PyTorch entire model to models/unet_model.pth")
 
-    # # Plot testing results
-    # utils.plots_cnn(tgt_truth_train_val, tgt_hat_train_val, station=station, phase='train_val', run=run)
-    # utils.plots_cnn(tgt_truth_test, tgt_hat_test, station=station, phase='test', run=run)
+    # # Load the model
+    # model = torch.load("results/models/unet_model.pth").to(device)
+    # print('Loaded PyTorch model from models/unet_model.pth')
 
-    # # Metrics
-    # utils.metrics(tgt_truth_train_val, tgt_hat_train_val, 'train_val')
-    # utils.metrics(tgt_truth_test, tgt_hat_test, 'test')
+    # Inference
+    tgt_truth_train_val, tgt_hat_train_val = test(training_val_data, model, 'train_val', device)
+    tgt_truth_test, tgt_hat_test = test(testing_data, model, 'test', device)
+
+    # np.save('tgt_truth_train_val.npy', tgt_truth_train_val, allow_pickle=False, fix_imports=False)
+    # np.save('tgt_hat_train_val.npy', tgt_hat_train_val, allow_pickle=False, fix_imports=False)
+    # np.save('tgt_truth_test.npy', tgt_truth_test, allow_pickle=False, fix_imports=False)
+    # np.save('tgt_hat_test.npy', tgt_hat_test, allow_pickle=False, fix_imports=False)
+
+    test_time = time.time() - train_val_time
+    print("Done! ---Train/val time: %s seconds ---" % (test_time))
+
+    # Plot testing results
+    utils.plots_cnn(tgt_truth_train_val, tgt_hat_train_val, station=station, phase='train_val', run=run)
+    utils.plots_cnn(tgt_truth_test, tgt_hat_test, station=station, phase='test', run=run)
+
+    # Metrics
+    utils.metrics_cnn(tgt_truth_train_val, tgt_hat_train_val, 'train_val')
+    utils.metrics_cnn(tgt_truth_test, tgt_hat_test, 'test')

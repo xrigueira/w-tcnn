@@ -57,7 +57,7 @@ class DoubleConv(nn.Module):
 
 # Define the UNet model
 class UNet(nn.Module):
-    def __init__(self, input_channels, channels, n_classes) -> None:
+    def __init__(self, n_variables, window_size, n_classes, input_channels, channels, d_fc) -> None:
         super(UNet, self).__init__()
 
         """UNet model for image segmentation.
@@ -73,7 +73,7 @@ class UNet(nn.Module):
         """
 
         # Define the encoder
-        self.encoder1 = DoubleConv(input_channels, channels) # 1 is the number of input channels
+        self.encoder1 = DoubleConv(input_channels, channels)
         self.pool1 = nn.MaxPool2d(kernel_size=2, stride=1)
 
         self.encoder2 = DoubleConv(channels, channels * 2)
@@ -101,6 +101,12 @@ class UNet(nn.Module):
         self.decoder4 = DoubleConv(channels * 2, channels)
         
         self.outconv = nn.Conv2d(channels, n_classes, kernel_size=1)
+        
+        # Define the linear layers
+        self.fc1 = nn.Linear(input_channels * window_size * n_variables, d_fc)
+        self.fc2 = nn.Linear(d_fc, d_fc // 2)
+        self.fc3 = nn.Linear(d_fc // 2, d_fc // 4)
+        self.fc4 = nn.Linear(d_fc // 4, n_classes)
 
     def forward(self, src):
 
@@ -135,7 +141,16 @@ class UNet(nn.Module):
         xconv_transpose4 = self.conv_transpose4(xdecoder3)
         xcat4 = torch.cat((xconv_transpose4, xencoder1), dim=1)
         xdecoder4 = self.decoder4(xcat4)
-
+        
         xoutconv = self.outconv(xdecoder4)
 
-        return xoutconv
+        # Flatten the output tensor
+        xoutconv = xoutconv.view(xoutconv.size(0), -1)
+
+        # Linear layers
+        x = relu(self.fc1(xoutconv))
+        x = relu(self.fc2(x))
+        x = relu(self.fc3(x))
+        x = self.fc4(x)
+
+        return x

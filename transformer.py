@@ -106,9 +106,6 @@ def test(dataloader, model, src_mask, memory_mask, tgt_mask, task_type, device):
             # Get metrics
             nse, rmse, pbias, kge = utils.metrics_transformer(tgt_y, pred, task_type)
             nse_final.append(nse), rmse_final.append(rmse), pbias_final.append(pbias), kge_final.append(kge)
-
-            if i == 1:
-                break
     
     # Get the mean of each metric by variable
     nse_final, rmse_final, pbias_final, kge_final = np.array(nse_final), np.array(rmse_final), np.array(pbias_final), np.array(kge_final)
@@ -269,48 +266,48 @@ if __name__ == '__main__':
     # Instantiate early stopping
     early_stopping = utils.EarlyStopping(patience=30, verbose=True)
 
-    # # Update model in the training process and test it
-    # start_time = time.time()
-    # df_training = pd.DataFrame(columns=('epoch', 'loss_train'))
-    # df_validation = pd.DataFrame(columns=('epoch', 'loss_val'))
-    # for t in range(epochs): # epochs is defined in the hyperparameters section above
-    #     print(f"Epoch {t+1}\n-------------------------------")
-    #     train(training_data, model, src_mask, memory_mask, tgt_mask, loss_function, optimizer, device, df_training, epoch=t)
-    #     epoch_val_loss = val(validation_data, model, src_mask, memory_mask, tgt_mask, loss_function, device, df_validation, epoch=t)
+    # Update model in the training process and test it
+    start_time = time.time()
+    df_training = pd.DataFrame(columns=('epoch', 'loss_train'))
+    df_validation = pd.DataFrame(columns=('epoch', 'loss_val'))
+    for t in range(epochs): # epochs is defined in the hyperparameters section above
+        print(f"Epoch {t+1}\n-------------------------------")
+        train(training_data, model, src_mask, memory_mask, tgt_mask, loss_function, optimizer, device, df_training, epoch=t)
+        epoch_val_loss = val(validation_data, model, src_mask, memory_mask, tgt_mask, loss_function, device, df_validation, epoch=t)
 
-    #     # Early stopping
-    #     early_stopping(epoch_val_loss, model, path='checkpoints')
-    #     if early_stopping.early_stop:
-    #         print("Early stopping")
-    #         break
+        # Early stopping
+        early_stopping(epoch_val_loss, model, path='checkpoints')
+        if early_stopping.early_stop:
+            print("Early stopping")
+            break
         
-    # print("Done! ---Execution time: %s seconds ---" % (time.time() - start_time))
+    print("Done! ---Execution time: %s seconds ---" % (time.time() - start_time))
 
-    # # Save results
-    # utils.logger(run=run, batches=batch_size, d_model=d_model, n_heads=n_heads,
-    #             encoder_layers=n_encoder_layers, decoder_layers=n_decoder_layers,
-    #             dim_ll_encoder=in_features_encoder_linear_layer, dim_ll_decoder=in_features_decoder_linear_layer,
-    #             lr=lr, epochs=epochs)
+    # Save results
+    utils.logger_transformer(run=run, batches=batch_size, d_model=d_model, n_heads=n_heads,
+                encoder_layers=n_encoder_layers, decoder_layers=n_decoder_layers,
+                dim_ll_encoder=in_features_encoder_linear_layer, dim_ll_decoder=in_features_decoder_linear_layer,
+                lr=lr, epochs=epochs)
     
-    # # Plot loss
-    # plt.figure(1);plt.clf()
-    # plt.plot(df_training['epoch'], df_training['loss_train'], '-o', label='loss train')
-    # plt.plot(df_training['epoch'], df_validation['loss_val'], '-o', label='loss val')
-    # plt.yscale('log')
-    # plt.xlabel(r'epoch')
-    # plt.ylabel(r'loss')
-    # plt.legend()
-    # # plt.show()
+    # Plot loss
+    plt.figure(1);plt.clf()
+    plt.plot(df_training['epoch'], df_training['loss_train'], '-o', label='loss train')
+    plt.plot(df_training['epoch'], df_validation['loss_val'], '-o', label='loss val')
+    plt.yscale('log')
+    plt.xlabel(r'epoch')
+    plt.ylabel(r'loss')
+    plt.legend()
+    # plt.show()
 
-    # plt.savefig(f'results/run_{run}/loss.png', dpi=300)
+    plt.savefig(f'results/run_t_{run}/loss.png', dpi=300)
 
     # # Save the model
     # torch.save(model, "results/models/transformer_model.pth")
     # print("Saved PyTorch entire model to results/models/transformer_model.pth")
 
-    # Load the model
-    model = torch.load("results/models/transformer_model.pth", map_location=torch.device('cpu')).to(device)
-    print('Loaded PyTorch model from results/models/transformer_model.pth')
+    # # Load the model
+    # model = torch.load("results/models/transformer_model.pth", map_location=torch.device('cpu')).to(device)
+    # print('Loaded PyTorch model from results/models/transformer_model.pth')
 
     # Inference
     # test(training_val_data, model, src_mask, memory_mask, tgt_mask, 'train_val', device)

@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 plt.style.use('ggplot')
 from scipy.stats import pearsonr
 from prettytable import PrettyTable
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_squared_error, r2_score
 
 import torch
 import torch.nn as nn
@@ -301,24 +301,19 @@ def metrics_cnn(truth, hat, phase):
     phase (str): the phase of the data. Must be one of "train", "val", or "test"
     
     Returns:
-    nse (float): Nash-Sutcliffe efficiency
     rmse (float): root mean square error
-    pbias (float): percent bias
-    kge (float): Kling-Gupta efficiency
+    r2 (float): r-squared value
     """
     
-    nse = get_nash_sutcliffe_efficiency(truth, hat)
     rmse = np.sqrt(mean_squared_error(truth, hat))
-    pbias = get_pbias(truth, hat)
-    kge = get_kge(truth, hat)
+    r2 = r2_score(truth, hat)
+    
     
     print(f'\n-- {phase}  results')
-    print(f'Nash-Sutcliffe efficiency: {nse}')
     print(f'Root mean square error: {rmse}')
-    print(f'Percent bias: {pbias}')
-    print(f'Kling-Gupta efficiency: {kge}')
+    print(f'R-squared: {r2}')
 
-    return nse, rmse, pbias, kge
+    return rmse, r2
 
 def plots_transformer(date, src, truth, hat, weights, tgt_percentage, station, phase, instance):
     
@@ -418,9 +413,9 @@ def plots_cnn(truth, hat, station, phase, run):
     plt.legend()
     # plt.show()
 
-    plt.savefig(f'plots/cplot_{phase}.png', dpi=300)
+    plt.savefig(f'results/run_cnn_{run}/cnn_{phase}.png', dpi=300)
 
-def logger(run, batches, d_model, n_heads, encoder_layers, decoder_layers, dim_ll_encoder, dim_ll_decoder, lr, epochs):
+def logger_transformer(run, batches, d_model, n_heads, encoder_layers, decoder_layers, dim_ll_encoder, dim_ll_decoder, lr, epochs):
 
     """Save the results of each run. The results
     are the hyperparameters of the model and the
@@ -434,11 +429,11 @@ def logger(run, batches, d_model, n_heads, encoder_layers, decoder_layers, dim_l
     """
 
     # Create a directory to save the results
-    if not os.path.exists('results/run_{}'.format(run)):
-        os.makedirs('results/run_{}'.format(run))
+    if not os.path.exists('results/run_t_{}'.format(run)):
+        os.makedirs('results/run_t_{}'.format(run))
     
     # Save the hyperparameters in a text file
-    with open('results/run_{}/results.txt'.format(run), 'w') as f:
+    with open('results/run_t_{}/results.txt'.format(run), 'w') as f:
         f.write('batches: ' + str(batches) + '\n')
         f.write('d_model: ' + str(d_model) + '\n')
         f.write('n_heads: ' + str(n_heads) + '\n')
@@ -446,6 +441,34 @@ def logger(run, batches, d_model, n_heads, encoder_layers, decoder_layers, dim_l
         f.write('decoder_layers: ' + str(decoder_layers) + '\n')
         f.write('dim_ll_encoder: ' + str(dim_ll_encoder) + '\n')
         f.write('dim_ll_decoder: ' + str(dim_ll_decoder) + '\n')
+        f.write('lr: ' + str(lr) + '\n')
+        f.write('n_epochs: ' + str(epochs) + '\n')
+
+        # Close the file
+        f.close()
+
+def logger_cnn(run, batches, input_channels, channels, d_fc, lr, epochs):
+
+    """Save the results of each run. The results
+    are the hyperparameters of the model and the
+    resulting plots.
+    ----------
+    Arguments:
+
+    Returns:
+    """
+
+        # Create a directory to save the results
+    if not os.path.exists('results/run_cnn_{}'.format(run)):
+        os.makedirs('results/run_cnn_{}'.format(run))
+    
+    # Save the hyperparameters in a text file
+    with open('results/run_cnn_{}/results.txt'.format(run), 'w') as f:
+        f.write('batches: ' + str(batches) + '\n')
+        f.write('d_model: ' + str(input_channels) + '\n')
+        f.write('input_channels: ' + str(input_channels) + '\n')
+        f.write('channels: ' + str(channels) + '\n')
+        f.write('d_fc: ' + str(d_fc) + '\n')
         f.write('lr: ' + str(lr) + '\n')
         f.write('n_epochs: ' + str(epochs) + '\n')
 
