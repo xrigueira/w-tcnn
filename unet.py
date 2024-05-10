@@ -185,7 +185,7 @@ if __name__ == '__main__':
     testing_data = DataLoader(testing_data, batch_size=1, shuffle=False)
     training_val_data = DataLoader(training_val_data, batch_size=1, shuffle=False) # For testing puporses
 
-    # Instantiate the transformer model and send it to device
+    # Instantiate the cnn model and send it to device
     n_variables, window_size, n_classes, input_channels, channels, d_fc
     model = cnn.UNet(n_variables=n_variables, window_size=window_size, n_classes=n_classes,
                     input_channels=input_channels, channels=channels, d_fc=d_fc).to(device)

@@ -1,5 +1,6 @@
 import time
 import datetime
+import numpy as np
 import pandas as pd
 
 import torch
@@ -17,18 +18,61 @@ warnings.filterwarnings("ignore")
 
 """Hyperparameter tuning with Grid Search."""
 
+# Define custom inference step for grid search
+def test(dataloader, model, src_mask, memory_mask, tgt_mask, task_type, device):
+    
+    # Get test dates
+    dates = data.index[testing_indices[0][0]:testing_indices[-1][1]]
+
+    # Set up objects to store metrics for each instance
+    nse_final, rmse_final, pbias_final, kge_final = [], [], [], []
+
+    # Perform inference
+    model.eval()
+    with torch.no_grad():
+        for i, sample in enumerate(dataloader):
+            src, tgt, tgt_y, src_p, tgt_p = sample
+            src, tgt, tgt_y, src_p, tgt_p = src.to(device), tgt.to(device), tgt_y.to(device), src_p.to(device), tgt_p.to(device)
+
+            pred, sa_weights_encoder, sa_weights, mha_weights = model(src=src, tgt=tgt, src_mask=src_mask, memory_mask=memory_mask, tgt_mask=tgt_mask)
+            pred = pred.to(device)
+
+            # Squeeze and pass src, tgt_y, pred, and weights to the cpu for plotting purposes
+            src = src.squeeze(0).cpu().detach().numpy()
+            tgt_y = tgt_y.squeeze(0).cpu().detach().numpy()
+            pred = pred.squeeze(0).cpu().detach().numpy()
+            sa_weights_encoder = sa_weights_encoder.squeeze(0).cpu().detach().numpy()
+            
+            # Get metrics
+            nse, rmse, pbias, kge = utils.metrics_transformer(tgt_y, pred, task_type)
+            nse_final.append(nse), rmse_final.append(rmse), pbias_final.append(pbias), kge_final.append(kge)
+    
+    # Get the mean of each metric by variable
+    nse_final, rmse_final, pbias_final, kge_final = np.array(nse_final), np.array(rmse_final), np.array(pbias_final), np.array(kge_final)
+
+    return np.mean(nse_final, axis=0)
+
 if __name__ == "__main__":
 
     # Define seed
     torch.manual_seed(0)
 
+    station = 901
+    task_type = 'MM' # MU for multivariate predicts univariate, MM for multivariate predicts multivariate
+
     # Define fixed hyperparameters
     validation_size = 0.125
-    # src_variables = ['x1']
-    src_variables = ['x1', 'x2']
-    tgt_variables = ['y']
-    input_variables = src_variables + tgt_variables
-    timestamp_col_name = "time"
+    src_variables = [f'ammonium_{station}', f'conductivity_{station}', 
+                    f'dissolved_oxygen_{station}', f'pH_{station}', 
+                    f'precipitation_{station}', f'turbidity_{station}',
+                    f'water_temperature_{station}']
+    tgt_variables = [f'ammonium_{station}', f'conductivity_{station}', 
+                    f'dissolved_oxygen_{station}', f'pH_{station}', 
+                    f'precipitation_{station}', f'turbidity_{station}',
+                    f'water_temperature_{station}']
+    # input_variables would be just the src or tgt because we are predicting the tgt from the src, and not a tgt that is not in the src
+    input_variables = src_variables
+    timestamp_col_name = "date"
 
     # Get device
     device = ('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
@@ -59,24 +103,27 @@ if __name__ == "__main__":
                             for epochs in parameters["epochs"]:
 
                                 # Only use data from this date and onwards
-                                cutoff_date = datetime.datetime(1980, 1, 1)
+                                cutoff_date = datetime.datetime(2005, 1, 1)
 
                                 n_encoder_layers = 1
                                 n_decoder_layers = 1 # Remember that with the current implementation it always has a decoder layer that returns the weights
-                                encoder_sequence_len = 1461 # length of input given to encoder used to create the pre-summarized windows (4 years of data) 1461
-                                crushed_encoder_sequence_len = 53 # Encoder sequence length afther summarizing the data when defining the dataset 53
-                                decoder_sequence_len = 1 # length of input given to decoder
-                                output_sequence_len = 1 # target sequence length. If hourly data and length = 48, you predict 2 days ahead
-                                window_size = encoder_sequence_len + output_sequence_len # used to slice data into sub-sequences
-                                step_size = 1 # Step size, i.e. how many time steps does the moving window move at each step
+                                encoder_sequence_len = 2016 # length of input given to encoder used to create the pre-summarized windows
+                                # crushed_encoder_sequence_len = 53 # Encoder sequence length afther summarizing the data when defining the dataset 53
+                                decoder_sequence_len = 672 # length of input given to decoder
+                                output_sequence_len = 672 # Target sequence length. If 15 min data data and length = 672, it predicts 7 days ahead
+                                in_features_encoder_linear_layer = 256
+                                in_features_decoder_linear_layer = 256
+                                max_sequence_len = encoder_sequence_len
+                                window_size = encoder_sequence_len + output_sequence_len # Used to slice data into sub-sequences
+                                step_size = 96 # Step size, i.e. how many time steps does the moving window move at each step
                                 batch_first = True
 
                                 # Read data
                                 data = utils.read_data(timestamp_col_name=timestamp_col_name)
                                 
                                 # Extract train and val data for nomralization purposes
-                                training_val_lower_bound = datetime.datetime(1980, 10, 1)
-                                training_val_upper_bound = datetime.datetime(2007, 9, 30)
+                                training_val_lower_bound = datetime.datetime(2005, 1, 1)
+                                training_val_upper_bound = datetime.datetime(2017, 12, 31)
 
                                 # Extract train/validation data
                                 training_val_data = data[(training_val_lower_bound <= data.index) & (data.index <= training_val_upper_bound)]
@@ -86,15 +133,15 @@ if __name__ == "__main__":
                                 training_val_range = (training_val_upper_bound - training_val_lower_bound).days
                                 train_val_percentage = (training_val_range / total_data_range)
                                 
-                                # Normalize the data
-                                from sklearn.preprocessing import MinMaxScaler
-                                scaler = MinMaxScaler()
+                                # # Normalize the data
+                                # from sklearn.preprocessing import MinMaxScaler
+                                # scaler = MinMaxScaler()
 
-                                # Fit scaler on the training set
-                                scaler.fit(training_val_data.iloc[:, 1:])
+                                # # Fit scaler on the training set
+                                # scaler.fit(training_val_data.iloc[:, 1:])
 
-                                # Transform the training and test sets
-                                data.iloc[:, 1:] = scaler.transform(data.iloc[:, 1:])
+                                # # Transform the training and test sets
+                                # data.iloc[:, 1:] = scaler.transform(data.iloc[:, 1:])
 
                                 # Make list of (start_idx, end_idx) pairs that are used to slice the time series sequence into chuncks
                                 data_indices = utils.get_indices(data=data, window_size=window_size, step_size=step_size)
@@ -110,13 +157,13 @@ if __name__ == "__main__":
                                 testing_indices = data_indices[-round(len(data_indices) * (1-train_val_percentage)):]
 
                                 # Make instance of the custom dataset class
-                                training_data = ds.TransformerDataset(data=torch.tensor(data[input_variables].values).float(),
+                                training_data = ds.TransformerDataset(task_type=task_type, data=torch.tensor(data[input_variables].values).float(),
                                                                     indices=training_indices, encoder_sequence_len=encoder_sequence_len, 
                                                                     decoder_sequence_len=decoder_sequence_len, tgt_sequence_len=output_sequence_len)
-                                validation_data = ds.TransformerDataset(data=torch.tensor(data[input_variables].values).float(),
+                                validation_data = ds.TransformerDataset(task_type=task_type, data=torch.tensor(data[input_variables].values).float(),
                                                                     indices=validation_indices, encoder_sequence_len=encoder_sequence_len, 
                                                                     decoder_sequence_len=decoder_sequence_len, tgt_sequence_len=output_sequence_len)
-                                testing_data = ds.TransformerDataset(data=torch.tensor(data[input_variables].values).float(),
+                                testing_data = ds.TransformerDataset(task_type=task_type, data=torch.tensor(data[input_variables].values).float(),
                                                                     indices=testing_indices, encoder_sequence_len=encoder_sequence_len, 
                                                                     decoder_sequence_len=decoder_sequence_len, tgt_sequence_len=output_sequence_len)
 
@@ -124,11 +171,11 @@ if __name__ == "__main__":
                                 training_val_data = training_data + validation_data # For testing puporses
                                 training_data = DataLoader(training_data, batch_size, shuffle=False)
                                 validation_data = DataLoader(validation_data, batch_size, shuffle=False)
-                                testing_data = DataLoader(testing_data, batch_size=1)
-                                training_val_data = DataLoader(training_val_data, batch_size=1) # For testing puporses
+                                testing_data = DataLoader(testing_data, batch_size=1, shuffle=False)
+                                training_val_data = DataLoader(training_val_data, batch_size=1, shuffle=False) # For testing puporses
 
-                                # Update the encoder sequence length to its crushed version
-                                encoder_sequence_len = crushed_encoder_sequence_len
+                                # # Update the encoder sequence length to its crushed version
+                                # encoder_sequence_len = crushed_encoder_sequence_len
 
                                 # Instantiate the transformer model and send it to device
                                 model = tst.TimeSeriesTransformer(input_size=len(src_variables), decoder_sequence_len=decoder_sequence_len, 
@@ -193,4 +240,4 @@ if __name__ == "__main__":
                                 results.loc[len(results.index)] = [batch_size, d_model, n_heads, in_features_encoder_linear_layer, in_features_decoder_linear_layer, lr, epochs, nse]
 
                                 # Save the results at each step
-                                results.to_csv(f'results/results.csv', sep=',', encoding='utf-8', index=True)
+                                results.to_csv(f'results/results_transformer.csv', sep=',', encoding='utf-8', index=True)

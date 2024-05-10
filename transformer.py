@@ -158,10 +158,10 @@ if __name__ == '__main__':
     n_heads = 2
     n_encoder_layers = 1
     n_decoder_layers = 1 # Remember that with the current implementation it always has a decoder layer that returns the weights
-    encoder_sequence_len = 2016 # length of input given to encoder used to create the pre-summarized windows (4 years of data) 1461
+    encoder_sequence_len = 2016 # length of input given to encoder used to create the pre-summarized windows
     # crushed_encoder_sequence_len = 53 # Encoder sequence length afther summarizing the data when defining the dataset 53
     decoder_sequence_len = 672 # length of input given to decoder
-    output_sequence_len = 672 # Target sequence length. If hourly data and length = 48, you predict 2 days ahead
+    output_sequence_len = 672 # Target sequence length. If 15 min data data and length = 672, it predicts 7 days ahead
     in_features_encoder_linear_layer = 256
     in_features_decoder_linear_layer = 256
     max_sequence_len = encoder_sequence_len
