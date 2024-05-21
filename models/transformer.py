@@ -509,9 +509,11 @@ class TimeSeriesTransformer(nn.Module):
         self.decoder = nn.TransformerDecoder(decoder_layer=decoder_layer, num_layers=n_decoder_layers, norm=None)
 
         # Initialize the weights
-        self.init_weights()
+        self.init_weights(seed=0)
     
-    def init_weights(self):
+    def init_weights(self, seed=None):
+        if seed is not None:
+            torch.manual_seed(seed)
         for p in self.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
