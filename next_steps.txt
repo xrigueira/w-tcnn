@@ -1,0 +1,13 @@
+1. Update transformer and main code in accordance to tstream.
+
+2. I have to apply the 12:1 ratio before getting the indices for the CNN?. Apply this on main or create another function. See how I did it on msarf. Additionally, I could use a weighted loss function that pays more attention to the 1s (anomalies).
+
+3. Train the transformer. If it does not work well, I could use the fedformer.
+
+4. Train the CNN (without precipitation?). https://arxiv.org/pdf/2002.09545.pdf https://arxiv.org/pdf/1905.13628.pdf
+
+5. Implement a LSTM and a CNN for comparison. This would allow me to have a performance analysis section (comparing unet with lstm-cnn), and an explainability section going into the weights of the transformer.
+
+6. If it does not work with UNet or CNN I can try RF.
+
+Submit to Water Research X. Submission to acceptance 91 days.
