@@ -1,4 +1,5 @@
 import time
+import random
 import datetime
 import numpy as np
 import pandas as pd
@@ -16,125 +17,157 @@ import models.transformer as tst
 # Define the training step
 def train(dataloader, model, src_mask, memory_mask, tgt_mask, loss_function, optimizer, device, df_training, epoch):
     
-    size = len(dataloader.dataset)
+    num_batches = len(dataloader)
+    training_loss = 0.0 # Initialize as a scalar for cumulative loss
+
+    # Set model to training mode
     model.train()
-    training_loss = [] # For plotting purposes
+
+    # Implementation without gradient scaling
     for i, batch in enumerate(dataloader):
         src, tgt, tgt_y, src_p, tgt_p = batch
+
+        # Send data to device
         src, tgt, tgt_y, src_p, tgt_p = src.to(device), tgt.to(device), tgt_y.to(device), src_p.to(device), tgt_p.to(device)
 
         # Zero out gradients for every batch
         optimizer.zero_grad()
         
-        # Compute prediction error
-        pred, sa_weights_encoder, sa_weights, mha_weights = model(src=src, tgt=tgt, src_mask=src_mask, memory_mask=memory_mask, tgt_mask=tgt_mask)
-        pred = pred.to(device)
-        loss = loss_function(pred, tgt_y)
+        # Forward pass
+        y_hat, sa_weights_encoder, sa_weights, mha_weights = model(src=src, tgt=tgt, src_mask=src_mask, memory_mask=memory_mask, tgt_mask=tgt_mask)
+
+        # Compute loss
+        loss = loss_function(y_hat, tgt_y)
         
         # Backpropagation
         loss.backward()
+
+        # Gradient clipping
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=4.0)
+
+        # Update weights
         optimizer.step()
-        
-        # Save results for plotting
-        training_loss.append(loss.item())
-        epoch_train_loss = np.mean(training_loss)
-        df_training.loc[epoch] = [epoch, epoch_train_loss]
 
-        # if i % 20 == 0:
-        #     print('Current batch', i)
-        #     loss, current = loss.item(), (i + 1) * len(src)
-        #     print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
+        # Accumulate loss for the epoch
+        training_loss += loss.item()
+    
+    # Calculate the average training loss for the epoch
+    epoch_train_loss = training_loss / num_batches
 
-# Define testing step
+    # Append to the DataFrame
+    df_training.loc[len(df_training)] = [epoch, epoch_train_loss]
+
+# Define validation step
 def val(dataloader, model, src_mask, memory_mask, tgt_mask, loss_function, device, df_validation, epoch):
     
     num_batches = len(dataloader)
+    validation_loss = 0.0 # Initialize as a scalar for cumulative loss
+
+    # Set model to evaluation mode
     model.eval()
-    validation_loss = [] # For plotting purposes
+    
     with torch.no_grad():
         for batch in dataloader:
             src, tgt, tgt_y, src_p, tgt_p = batch
+            # Send data to device
             src, tgt, tgt_y, src_p, tgt_p = src.to(device), tgt.to(device), tgt_y.to(device), src_p.to(device), tgt_p.to(device)
             
-            pred, sa_weights_encoder, sa_weights, mha_weights = model(src=src, tgt=tgt, src_mask=src_mask, memory_mask=memory_mask, tgt_mask=tgt_mask)
-            pred = pred.to(device)
-            loss = loss_function(pred, tgt_y)
+            # Forward pass
+            y_hat, sa_weights_encoder, sa_weights, mha_weights = model(src=src, tgt=tgt, src_mask=src_mask, memory_mask=memory_mask, tgt_mask=tgt_mask)
             
-            # Save results for plotting
-            validation_loss.append(loss.item())
-            epoch_val_loss = np.mean(validation_loss)
-            df_validation.loc[epoch] = [epoch, epoch_val_loss]
-    
-    loss /= num_batches
-    # print(f"Avg test loss: {loss:>8f}")
+            # Compute loss
+            loss = loss_function(y_hat, tgt_y)
+
+            # Accumulate loss for the epoch
+            validation_loss += loss.item()
+        
+        # Calculate the average validation loss for the epoch
+        epoch_val_loss = validation_loss / num_batches
+
+        # Append to the DataFrame
+        df_validation.loc[len(df_validation)] = [epoch, epoch_val_loss]
+
     return epoch_val_loss
 
 # Define inference step
-def test(dataloader, model, src_mask, memory_mask, tgt_mask, task_type, device):
+def test(dataloader, model, src_mask, memory_mask, tgt_mask, phase, dates, device):
     
     # Get test dates
-    dates = data.index[testing_indices[0][0]:testing_indices[-1][1]]
+    # dates = data.index[testing_indices[0][0]:testing_indices[-1][1]]
 
     # Set up objects to store metrics for each instance
-    nse_final, rmse_final, pbias_final, kge_final = [], [], [], []
+    tgt_ys = torch.zeros(len(dataloader), device=device)
+    y_hats = torch.zeros(len(dataloader), device=device)
+
+    # Define dictionary to store the attention weights, ground truth and predictions
+    results = {}
 
     # Perform inference
     model.eval()
     with torch.no_grad():
-        for i, sample in enumerate(dataloader):
-            src, tgt, tgt_y, src_p, tgt_p = sample
+        for i, (src, tgt, tgt_y, src_p, tgt_p) in enumerate(dataloader):
+
+            # Send data to device
             src, tgt, tgt_y, src_p, tgt_p = src.to(device), tgt.to(device), tgt_y.to(device), src_p.to(device), tgt_p.to(device)
 
-            pred, sa_weights_encoder, sa_weights, mha_weights = model(src=src, tgt=tgt, src_mask=src_mask, memory_mask=memory_mask, tgt_mask=tgt_mask)
-            pred = pred.to(device)
+            # Forward pass
+            y_hat, sa_weights_encoder, sa_weights, mha_weights = model(src=src, tgt=tgt, src_mask=src_mask, memory_mask=memory_mask, tgt_mask=tgt_mask)
+
+            # Store ground truth and prediction
+            tgt_ys[i] = tgt_y.item()
+            y_hats[i] = y_hat.item()
 
             # Squeeze and pass src, tgt_y, pred, and weights to the cpu for plotting purposes
             src = src.squeeze(0).cpu().detach().numpy()
             tgt_y = tgt_y.squeeze(0).cpu().detach().numpy()
-            pred = pred.squeeze(0).cpu().detach().numpy()
+            y_hat = y_hat.squeeze(0).cpu().detach().numpy()
             sa_weights_encoder = sa_weights_encoder.squeeze(0).cpu().detach().numpy()
-            
-            # Get the date
-            date = dates[i]
 
-            # Plot the results
-            if task_type == 'test':
-                utils.plots_transformer(date, src, tgt_y, pred, weights=sa_weights_encoder, 
-                                        tgt_percentage=1, station=station, phase=task_type, 
-                                        instance=i)
-            
             # Get metrics
-            nse, rmse, pbias, kge = utils.metrics_transformer(tgt_y, pred, task_type)
-            nse_final.append(nse), rmse_final.append(rmse), pbias_final.append(pbias), kge_final.append(kge)
-    
-    # Get the mean of each metric by variable
-    nse_final, rmse_final, pbias_final, kge_final = np.array(nse_final), np.array(rmse_final), np.array(pbias_final), np.array(kge_final)
-    
-    # Create a dictionary with the metrics
-    metrics = {
-        'Nash-Sutcliffe efficiency': np.mean(nse_final, axis=0),
-        'Root mean squared error': np.mean(rmse_final, axis=0),
-        'Percent bias': np.mean(pbias_final, axis=0),
-        'Kling-Gupta efficiency': np.mean(kge_final, axis=0)
-    }
+            nse, rmse, pbias, kge = utils.metrics_transformer(tgt_y, y_hat, phase)
 
-    # Convert the dictionary to a DataFrame
-    df = pd.DataFrame(metrics, index=['am', 'co', 'do', 'ph', 'pr', 'tu', 'wt'])
+            # Save the results
+            if phase == 'test':
+                results[dates[i]] = {
+                    'src': src,
+                    'tgt_y': tgt_y,
+                    'y_hat': y_hat,
+                    'weights': sa_weights_encoder,
+                    'nse': nse,
+                    'rmse': rmse,
+                    'pbias': pbias,
+                    'kge': kge
+                }
+    
+    # Save the dictionary to numpy file
+    if phase != '': # if phase == 'test':
+        np.save(f'results/run_{run}/results_{phase}.npy', results, allow_pickle=True, fix_imports=True)
+    
+    # Pass tgt_ys and y_hats to CPU and convert to numpy arrays
+    tgt_ys = tgt_ys.cpu().numpy()
+    y_hats = y_hat.cpu().numpy()
 
-    # Print the DataFrame
-    print(f'\n-- {task_type}  results')
-    print(df)
+    return tgt_ys, y_hats
 
 if __name__ == '__main__':
     
-    # Define seed
+    # Define seeds
+    seed = 0
+    random.seed(seed) # Affects the random selection of the validation set
+    np.random.seed(seed) # Affects random noise added to the data
+
     torch.manual_seed(0)
+    torch.cuda.manual_seed_all(seed)
+
+    # Set deterministic behavior for reproducibility
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
     station = 901
     task_type = 'MM' # MU for multivariate predicts univariate, MM for multivariate predicts multivariate
 
     # Define run number
-    run = 1
+    run = 0
     
     # Hyperparams
     batch_size = 16
@@ -180,40 +213,31 @@ if __name__ == '__main__':
     # Read data
     data = utils.read_data(timestamp_col_name=timestamp_col_name)
     
-    # Extract train and val data for nomralization purposes
+    # Define the training and validation bounds
     training_val_lower_bound = datetime.datetime(2005, 1, 1)
     training_val_upper_bound = datetime.datetime(2017, 12, 31)
 
-    # Extract train/validation data
-    training_val_data = data[(training_val_lower_bound <= data.index) & (data.index <= training_val_upper_bound)]
-    
-    # Calculate the percentage of data in the training_val_data subset
-    total_data_range = (data.index.max() - data.index.min()).days
-    training_val_range = (training_val_upper_bound - training_val_lower_bound).days
-    train_val_percentage = (training_val_range / total_data_range)
-    
-    # # Normalize the data [already done in the smoother.py file]
-    # from sklearn.preprocessing import MinMaxScaler
-    # scaler = MinMaxScaler()
-
-    # # Fit scaler on the training set
-    # scaler.fit(training_val_data.iloc[:, 1:-1])
-
-    # # Transform the training and test sets
-    # data.iloc[:, 1:-1] = scaler.transform(data.iloc[:, 1:-1])
+    # Get the global index of the train_upper_bound to later subset the data indices
+    training_val_upper_index = data.index.get_loc(training_val_upper_bound)
     
     # Make list of (start_idx, end_idx) pairs that are used to slice the time series sequence into chuncks
     data_indices = utils.get_indices(data=data, window_size=window_size, step_size=step_size)
 
-    # Divide train data into train and validation data with a 8:1 ratio using the indices.
-    # This is done this way because we need 4 years of data to create the summarized nonuniform timesteps,
-    # what limits the size of the validation set. However, with this implementation, we use data from the
-    # traning part to build the summarized nonuniform timesteps for the validation set. For example, if
-    # we use the current validation size, the set would have less than four years of data and would not
-    # be able to create the summarized nonuniform timesteps.
-    training_indices = data_indices[:round(len(data_indices) * train_val_percentage)]
-    validation_indices = training_indices[-round(len(training_indices) * validation_size):]
-    testing_indices = data_indices[-round(len(data_indices) * (1-train_val_percentage)):]
+    # Divide data into train and validation data with a 8:1 ratio using the indices.
+    training_validation_indices = data_indices[:(training_val_upper_index-encoder_sequence_len)]
+    training_indices = training_validation_indices[:(round(len(training_validation_indices) * (1-validation_size)))]
+    validation_indices = training_validation_indices[-round(len(training_validation_indices) * validation_size):]
+    testing_indices = data_indices[(training_val_upper_index-encoder_sequence_len):]
+    
+    # Get the complete range of dates for the train and validation sets
+    dates_train_validation = pd.date_range(start=training_val_lower_bound + datetime.timedelta(days=encoder_sequence_len), periods=len(training_indices) + len(validation_indices), freq='D')
+    
+    # Subset the test and validation sets
+    dates_train = dates_train_validation[[i[0] for i in training_indices]]
+    dates_validation = dates_train_validation[[i[0] for i in validation_indices]]
+    
+    # Get the complete range of dates for the test set
+    dates_test = pd.date_range(start=training_val_upper_bound, periods=len(testing_indices), freq='15min')
 
     # Make instance of the custom dataset class
     training_data = ds.TransformerDataset(task_type=task_type, data=torch.tensor(data[input_variables].values).float(),
@@ -226,23 +250,24 @@ if __name__ == '__main__':
                                         indices=testing_indices, encoder_sequence_len=encoder_sequence_len, 
                                         decoder_sequence_len=decoder_sequence_len, tgt_sequence_len=output_sequence_len)
 
-    # Set up dataloaders
-    training_val_data = training_data + validation_data # For testing puporses
-    training_data = DataLoader(training_data, batch_size, shuffle=False)
-    validation_data = DataLoader(validation_data, batch_size, shuffle=False)
+    # Set up the train and validation dataloaders used for inference
+    training_data_inference = DataLoader(training_data, batch_size=1, shuffle=False)
+    validation_data_inference = DataLoader(validation_data, batch_size=1, shuffle=False)
+
+    # Set up the dataloaders
+    training_data = DataLoader(training_data, batch_size, shuffle=True)
+    validation_data = DataLoader(validation_data, batch_size, shuffle=True)
     testing_data = DataLoader(testing_data, batch_size=1, shuffle=False)
-    training_val_data = DataLoader(training_val_data, batch_size=1, shuffle=False) # For testing puporses
     
     # # Update the encoder sequence length to its crushed version
     # encoder_sequence_len = crushed_encoder_sequence_len
 
     # Instantiate the transformer model and send it to device
-    model = tst.TimeSeriesTransformer(input_size=len(src_variables), decoder_sequence_len=decoder_sequence_len, 
-                                    batch_first=batch_first, d_model=d_model, n_encoder_layers=n_encoder_layers, 
-                                    n_decoder_layers=n_decoder_layers, n_heads=n_heads, dropout_encoder=0.2, 
-                                    dropout_decoder=0.2, dropout_pos_encoder=0.1, dim_feedforward_encoder=in_features_encoder_linear_layer, 
-                                    dim_feedforward_decoder=in_features_decoder_linear_layer, num_src_features=len(src_variables), 
-                                    num_predicted_features=len(tgt_variables)).to(device)
+    model = tst.TimeSeriesTransformer(input_size=len(src_variables), decoder_sequence_len=decoder_sequence_len, decoder_sequence_len=output_sequence_len,
+                                    batch_first=batch_first, d_model=d_model, n_encoder_layers=n_encoder_layers, n_decoder_layers=n_decoder_layers, 
+                                    n_heads=n_heads, dropout_encoder=0.2, dropout_decoder=0.2, dropout_pos_encoder=0.1, 
+                                    dim_feedforward_encoder=in_features_encoder_linear_layer, dim_feedforward_decoder=in_features_decoder_linear_layer, 
+                                    num_src_features=len(src_variables), num_predicted_features=len(tgt_variables)).to(device)
     
     # Print model and number of parameters
     print('Defined model:\n', model)
@@ -263,23 +288,55 @@ if __name__ == '__main__':
     loss_function = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
+    # Instatiate scheduler
+    # scheduler = utils.LearningRateSchedulerPlateau(optimizer, patience=10, factor=0.90)
+    scheduler = utils.LearningRateSchedulerLinear(optimizer, start_factor=1, end_factor=0.1, n_epochs=epochs)
+    # scheduler = utils.LearningRateSchedulerStep(optimizer, step_size=5, gamma=0.95)
+
     # Instantiate early stopping
-    early_stopping = utils.EarlyStopping(patience=30, verbose=True)
+    early_stopping = utils.EarlyStopping(patience=epochs, verbose=False)
+
+    # Initialize loss the plot
+    plt.ion()  # Turn on interactive mode
+    fig, ax = plt.subplots()
+    line1, = ax.plot([], [], '-', label='loss train', color='red', linewidth=0.5)
+    line2, = ax.plot([], [], '-', label='loss val', color='blue', linewidth=0.5)
+    # line3, = ax.plot([], [], '-', label='loss test', color='green', linewidth=0.5)
+    ax.set_yscale('log')
+    ax.set_xlabel(r'epoch')
+    ax.set_ylabel(r'loss')
+    ax.set_title(r'Loss evolution')
+    ax.legend()
 
     # Update model in the training process and test it
     start_time = time.time()
     df_training = pd.DataFrame(columns=('epoch', 'loss_train'))
     df_validation = pd.DataFrame(columns=('epoch', 'loss_val'))
+    # df_test = pd.DataFrame(columns=('epoch', 'loss_test'))
     for t in range(epochs): # epochs is defined in the hyperparameters section above
-        print(f"Epoch {t+1}\n-------------------------------")
+        print(f'Epoch {t+1}')
         train(training_data, model, src_mask, memory_mask, tgt_mask, loss_function, optimizer, device, df_training, epoch=t)
         epoch_val_loss = val(validation_data, model, src_mask, memory_mask, tgt_mask, loss_function, device, df_validation, epoch=t)
+
+        # learning rate scheduling
+        scheduler.step(epoch_val_loss)
 
         # Early stopping
         early_stopping(epoch_val_loss, model, path='checkpoints')
         if early_stopping.early_stop:
             print("Early stopping")
             break
+
+        # Update the plot
+        line1.set_data(df_training['epoch'], df_training['loss_train'])
+        line2.set_data(df_validation['epoch'], df_validation['loss_val'])
+        # line3.set_data(df_test['epoch'], df_test['loss_test'])
+        ax.relim()
+        ax.autoscale_view()
+        plt.draw()
+        plt.pause(0.001)  # Pause to update the plot
+
+        print('-------------------------------')
         
     print("Done! ---Execution time: %s seconds ---" % (time.time() - start_time))
 
@@ -287,28 +344,39 @@ if __name__ == '__main__':
     utils.logger_transformer(run=run, batches=batch_size, d_model=d_model, n_heads=n_heads,
                 encoder_layers=n_encoder_layers, decoder_layers=n_decoder_layers,
                 dim_ll_encoder=in_features_encoder_linear_layer, dim_ll_decoder=in_features_decoder_linear_layer,
-                lr=lr, epochs=epochs)
+                lr=lr, epochs=epochs, seed=seed, run_time=(time.time() - start_time))
     
-    # Plot loss
-    plt.figure(1);plt.clf()
-    plt.plot(df_training['epoch'], df_training['loss_train'], '-o', label='loss train')
-    plt.plot(df_training['epoch'], df_validation['loss_val'], '-o', label='loss val')
-    plt.yscale('log')
-    plt.xlabel(r'epoch')
-    plt.ylabel(r'loss')
-    plt.legend()
-    # plt.show()
+    # Finalize the plot
+    plt.ioff()  # Turn off interactive mode
 
-    plt.savefig(f'results/run_t_{run}/loss.png', dpi=300)
+    # Save and close the plot
+    plt.savefig(f'results/run_{run}/loss.png', dpi=300)
+    plt.close()
 
-    # # Save the model
-    # torch.save(model, "results/models/transformer_model.pth")
-    # print("Saved PyTorch entire model to results/models/transformer_model.pth")
+    # Save the model
+    torch.save(model, f'results/run_{run}/transformer_model.pth')
+    print(f'Saved PyTorch entire model to results/run_{run}/model.pth')
 
     # # Load the model
-    # model = torch.load("results/models/transformer_model.pth", map_location=torch.device('cpu')).to(device)
+    # model = torch.load("results/run_{run}/transformer_model.pth", map_location=torch.device('cpu')).to(device)
     # print('Loaded PyTorch model from results/models/transformer_model.pth')
 
     # Inference
-    # test(training_val_data, model, src_mask, memory_mask, tgt_mask, 'train_val', device)
-    test(testing_data, model, src_mask, memory_mask, tgt_mask, 'test', device)
+    tgt_ys_train, y_hats_train = test(training_data, model, src_mask, memory_mask, tgt_mask, 'train', dates_train, device)
+    tgt_ys_val, y_hats_val = test(validation_data, model, src_mask, memory_mask, tgt_mask, 'validation', dates_validation, device)
+    tgt_ys_test, y_hats_test = test(testing_data, model, src_mask, memory_mask, tgt_mask, 'test', dates_test, device)
+
+    # Load results object
+    phase = 'test'
+    results = np.load(f'results/run_{run}/results_{phase}.npy', allow_pickle=True, fix_imports=True)
+
+    # Plot results
+    for date in results:
+        utils.plots_transformer(date=date, src=date['src'], tgt_y=date['tgt_y'], y_hat=date['y_hat'], weights=date['weights'], 
+                                        tgt_percentage=1, station=station, phase=phase, 
+                                        instance=date)
+
+    # Metrics
+    utils.metrics_transformer(tgt_ys_train, y_hats_train, 'train', run=run)
+    utils.metrics_transformer(tgt_ys_val, y_hats_val, 'validation', run=run)
+    utils.metrics_transformer(tgt_ys_test, y_hats_test, 'test', run=run)

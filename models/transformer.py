@@ -140,7 +140,7 @@ class customTransformerEncoderLayer(nn.Module):
     def __setstate__(self, state):
         super().__setstate__(state)
         if not hasattr(self, 'activation'):
-            self.activation = F.relu
+            self.activation = F.relu()
     
     def forward(
             self,
@@ -165,97 +165,22 @@ class customTransformerEncoderLayer(nn.Module):
         Shape:
             see the docs in Transformer class.
         """
-        src_key_padding_mask = F._canonical_mask(
-            mask=src_key_padding_mask,
-            mask_name="src_key_padding_mask",
-            other_type=F._none_or_dtype(src_mask),
-            other_name="src_mask",
-            target_type=src.dtype
-        )
+        # src_key_padding_mask = F._canonical_mask(
+        #     mask=src_key_padding_mask,
+        #     mask_name="src_key_padding_mask",
+        #     other_type=F._none_or_dtype(src_mask),
+        #     other_name="src_mask",
+        #     target_type=src.dtype
+        # )
 
-        src_mask = F._canonical_mask(
-            mask=src_mask,
-            mask_name="src_mask",
-            other_type=None,
-            other_name="",
-            target_type=src.dtype,
-            check_other=False,
-        )
-
-        # # see Fig. 1 of https://arxiv.org/pdf/2002.04745v1.pdf
-        # why_not_sparsity_fast_path = ''
-        # if not src.dim() == 3:
-        #     why_not_sparsity_fast_path = f"input not batched; expected src.dim() of 3 but got {src.dim()}"
-        # elif self.training:
-        #     why_not_sparsity_fast_path = "training is enabled"
-        # elif not self.self_attn.batch_first :
-        #     why_not_sparsity_fast_path = "self_attn.batch_first was not True"
-        # elif not self.self_attn._qkv_same_embed_dim :
-        #     why_not_sparsity_fast_path = "self_attn._qkv_same_embed_dim was not True"
-        # elif not self.activation_relu_or_gelu:
-        #     why_not_sparsity_fast_path = "activation_relu_or_gelu was not True"
-        # elif not (self.norm1.eps == self.norm2.eps):
-        #     why_not_sparsity_fast_path = "norm1.eps is not equal to norm2.eps"
-        # elif src.is_nested and (src_key_padding_mask is not None or src_mask is not None):
-        #     why_not_sparsity_fast_path = "neither src_key_padding_mask nor src_mask are not supported with NestedTensor input"
-        # elif self.self_attn.num_heads % 2 == 1:
-        #     why_not_sparsity_fast_path = "num_head is odd"
-        # elif torch.is_autocast_enabled():
-        #     why_not_sparsity_fast_path = "autocast is enabled"
-        # if not why_not_sparsity_fast_path:
-        #     tensor_args = (
-        #         src,
-        #         self.self_attn.in_proj_weight,
-        #         self.self_attn.in_proj_bias,
-        #         self.self_attn.out_proj.weight,
-        #         self.self_attn.out_proj.bias,
-        #         self.norm1.weight,
-        #         self.norm1.bias,
-        #         self.norm2.weight,
-        #         self.norm2.bias,
-        #         self.linear1.weight,
-        #         self.linear1.bias,
-        #         self.linear2.weight,
-        #         self.linear2.bias,
-        #     )
-
-        #     # We have to use list comprehensions below because TorchScript does not support
-        #     # generator expressions.
-        #     _supported_device_type = ["cpu", "cuda", torch.utils.backend_registration._privateuse1_backend_name]
-        #     if torch.overrides.has_torch_function(tensor_args):
-        #         why_not_sparsity_fast_path = "some Tensor argument has_torch_function"
-        #     elif not all((x.device.type in _supported_device_type) for x in tensor_args):
-        #         why_not_sparsity_fast_path = ("some Tensor argument's device is neither one of "
-        #                                     f"{_supported_device_type}")
-        #     elif torch.is_grad_enabled() and any(x.requires_grad for x in tensor_args):
-        #         why_not_sparsity_fast_path = ("grad is enabled and at least one of query or the "
-        #                                     "input/output projection weights or biases requires_grad")
-
-        #     if not why_not_sparsity_fast_path:
-        #         merged_mask, mask_type = self.self_attn.merge_masks(src_mask, src_key_padding_mask, src)
-        #         return torch._transformer_encoder_layer_fwd(
-        #             src,
-        #             self.self_attn.embed_dim,
-        #             self.self_attn.num_heads,
-        #             self.self_attn.in_proj_weight,
-        #             self.self_attn.in_proj_bias,
-        #             self.self_attn.out_proj.weight,
-        #             self.self_attn.out_proj.bias,
-        #             self.activation_relu_or_gelu == 2,
-        #             self.norm_first,
-        #             self.norm1.eps,
-        #             self.norm1.weight,
-        #             self.norm1.bias,
-        #             self.norm2.weight,
-        #             self.norm2.bias,
-        #             self.linear1.weight,
-        #             self.linear1.bias,
-        #             self.linear2.weight,
-        #             self.linear2.bias,
-        #             merged_mask,
-        #             mask_type,
-        #         )
-
+        # src_mask = F._canonical_mask(
+        #     mask=src_mask,
+        #     mask_name="src_mask",
+        #     other_type=None,
+        #     other_name="",
+        #     target_type=src.dtype,
+        #     check_other=False,
+        # )
 
         x = src
         if self.norm_first:
@@ -449,17 +374,18 @@ class TimeSeriesTransformer(nn.Module):
     forecasting.
     """
 
-    # d_embed from Tianfang's transformer is d_model from my case
-    def __init__(self, input_size: int, decoder_sequence_len: int, batch_first: bool,
-                d_model: int, n_encoder_layers: int, n_decoder_layers: int, n_heads: int,
-                dropout_encoder: float, dropout_decoder: float, dropout_pos_encoder: float,
+    def __init__(self, input_size: int, encoder_sequence_len: int, decoder_sequence_len: int, 
+                batch_first: bool, d_model: int, n_encoder_layers: int, n_decoder_layers: int, 
+                n_heads: int, dropout_encoder: float, dropout_decoder: float, dropout_pos_encoder: float,
                 dim_feedforward_encoder: int, dim_feedforward_decoder: int,
-                num_src_features: int, num_predicted_features: int):
+                num_src_features: int, num_predicted_features: int, 
+                layer_norm_eps: float = 1e-5, bias: bool = True):
         super(TimeSeriesTransformer, self).__init__()
         
         """
         Arguments:
         input_size (int): number of input variables. 1 if univariate.
+        encoder_sequence_len (int): the length of the input sequence fed to the encoder
         decoder_sequence_len (int): the length of the input sequence fed to the decoder
         d_model (int): all sub-layers in the model produce outputs of dimension d_model
         n_encoder_layers (int): number of stacked encoder layers in the encoder
@@ -473,10 +399,13 @@ class TimeSeriesTransformer(nn.Module):
         num_predicted_features (int) : the number of features you want to predict. Most of the time, 
         this will be 1 because we're only forecasting FCR-N prices in DK2, but in we wanted to also 
         predict FCR-D with the same model, num_predicted_features should be 2.
+        layer_norm_eps (float): the eps value in layer normalization components (default=1e-5).
+        bias (bool): If set to ``False``, ``Linear`` and ``LayerNorm`` layers will not learn an additive bias
         """
         
         self.model_tpye = 'Transformer'
-
+        self.n_decoder_layers = n_decoder_layers
+        self.encoder_sequence_len = encoder_sequence_len
         self.decoder_sequence_len = decoder_sequence_len
         
         # print("input_size is: {}".format(input_size))
@@ -488,14 +417,21 @@ class TimeSeriesTransformer(nn.Module):
         self.decoder_input_layer = nn.Linear(in_features=num_src_features, out_features=d_model)
         
         self.linear_mapping = nn.Linear(in_features=d_model, out_features=num_predicted_features)
+
+        # Create the linear layers needed for the 0-decoder model
+        self.linear_mapping_zero_decoder = nn.Linear(in_features=encoder_sequence_len*d_model, out_features=num_predicted_features)
         
         # Create the positional encoder dropout, max_seq_len, d_model, batch_first
-        self.positional_encoding_layer = PositionalEncoder(dropout=dropout_pos_encoder, max_seq_len=5000, d_model=d_model, batch_first=batch_first)
+        self.positional_encoding_encoder = PositionalEncoder(dropout=dropout_pos_encoder, max_seq_len=max(encoder_sequence_len, decoder_sequence_len), d_model=d_model, batch_first=batch_first)
+        self.positional_encoding_decoder = PositionalEncoder(dropout=dropout_pos_encoder, max_seq_len=max(encoder_sequence_len, decoder_sequence_len), d_model=d_model, batch_first=batch_first)
         
         # The encoder layer used in the paper is identical to the one used by Vaswani et al (2017) 
         # on which the PyTorch transformer model is based
         encoder_layer = customTransformerEncoderLayer(d_model=d_model, nhead=n_heads, dim_feedforward=dim_feedforward_encoder,
                                                 dropout=dropout_encoder, batch_first=batch_first)
+
+        # Encoder norm
+        encoder_norm = nn.LayerNorm(d_model, eps=layer_norm_eps, bias=bias)
 
         # Stack the encoder layers in nn.TransformerEncoder
         self.encoder = nn.TransformerEncoder(encoder_layer=encoder_layer, num_layers=n_encoder_layers, norm=None)
@@ -504,16 +440,16 @@ class TimeSeriesTransformer(nn.Module):
         decoder_layer = customTransformerDecoderLayer(d_model=d_model, n_heads=n_heads, dim_feedforward=dim_feedforward_decoder,
                                                 dropout=dropout_decoder,  batch_first=batch_first)
         
+        # Decoder norm
+        decoder_norm = nn.LayerNorm(d_model, eps=layer_norm_eps, bias=bias)
         
         # Stack the decoder layers in nn.TransformerDecoder
         self.decoder = nn.TransformerDecoder(decoder_layer=decoder_layer, num_layers=n_decoder_layers, norm=None)
 
         # Initialize the weights
-        self.init_weights(seed=0)
+        self.init_weights()
     
-    def init_weights(self, seed=None):
-        if seed is not None:
-            torch.manual_seed(seed)
+    def init_weights(self):
         for p in self.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
@@ -528,7 +464,7 @@ class TimeSeriesTransformer(nn.Module):
         tgt: the sequence to the decoder. Shape (T, E) for unbatched input, or (N, T, E) if batch_first=True, 
             where T is the target sequence length, N is the batch size, and E is the number of features (1 if univariate).
         src_mask: the mask for the src sequence to prevent the model from using data points from the target sequence.
-        tgt_mask: the mask fro the tgt sequence to prevent the model from using data points from the target sequence.
+        tgt_mask: the mask for the tgt sequence to prevent the model from using data points from the target sequence.
         
         Returns:
         Tensor of shape: [target_sequence_length, batch_size, num_predicted_features]
@@ -542,11 +478,10 @@ class TimeSeriesTransformer(nn.Module):
         src = self.encoder_input_layer(src)
         # print("From model.forward(): Size of src after input layer: {}".format(src.size()))
         
-        
         # Pass through the positional encoding layer            
         # src shape: [batch_size, src length, d_model] regardless of number of input features
         # print(src.shape) # Maybe I just have to use a squeeze on source to add a dimension of 1 for the batch size. Probably have to do it with tgt and maybe tgt_y too
-        src = self.positional_encoding_layer(src)
+        src = self.positional_encoding_encoder(src)
         # print("From model.forward(): Size of src after pos_enc layer: {}".format(src.size()))
         
         # Pass through all the stacked encoder layers in the encoder
@@ -557,29 +492,45 @@ class TimeSeriesTransformer(nn.Module):
         src, sa_weights_encoder = self.encoder(src=src, mask=src_mask)
         # print("From model.forward(): Size of src after encoder: {}".format(src.size()))
 
-        # Pass decoder input through decoder input layer
-        # tgt shape: [target sequence length, batch_size, d_model] regardless of number of input features
-        # print(f"From model.forward(): Size of tgt before the decoder = {tgt.size()}")
-        decoder_output = self.decoder_input_layer(tgt)
-        # print("From model.forward(): Size of decoder_output after linear decoder layer: {}".format(decoder_output.size()))
-        
-        # if src_mask is not None:
-        #     print("From model.forward(): Size of src_mask: {}".format(src_mask.size()))
-        # if tgt_mask is not None:
-        #     print("From model.forward(): Size of tgt_mask: {}".format(tgt_mask.size()))
-        
-        # Pass through the positional encoding layer            
-        # src shape: [batch_size, tgt length, d_model] regardless of number of input features
-        decoder_output = self.positional_encoding_layer(decoder_output)
+        if self.n_decoder_layers != 0:
+            # Pass decoder input through decoder input layer
+            # tgt shape: [target sequence length, batch_size, d_model] regardless of number of input features
+            # print(f"From model.forward(): Size of tgt before the decoder = {tgt.size()}")
+            decoder_output = self.decoder_input_layer(tgt)
+            # print("From model.forward(): Size of decoder_output after linear decoder layer: {}".format(decoder_output.size()))
+            
+            # if src_mask is not None:
+            #     print("From model.forward(): Size of src_mask: {}".format(src_mask.size()))
+            # if tgt_mask is not None:
+            #     print("From model.forward(): Size of tgt_mask: {}".format(tgt_mask.size()))
+            
+            # Pass through the positional encoding layer            
+            # src shape: [batch_size, tgt length, d_model] regardless of number of input features
+            decoder_output = self.positional_encoding_decoder(decoder_output)
 
-        # Pass through the decoder
-        # Output shape: [batch_size, target seq len, d_model]
-        decoder_output, sa_weights, mha_weights = self.decoder(tgt=decoder_output, memory=src, tgt_mask=tgt_mask, memory_mask=memory_mask)
-        # print("From model.forward(): decoder_output shape after decoder: {}".format(decoder_output.shape))
+            # Pass through the decoder
+            # Output shape: [batch_size, target seq len, d_model]
+            decoder_output, sa_weights, mha_weights = self.decoder(tgt=decoder_output, memory=src, tgt_mask=tgt_mask, memory_mask=memory_mask)
+            # print("From model.forward(): decoder_output shape after decoder: {}".format(decoder_output.shape))
+            
+            # Pass through the linear mapping
+            # shape [batch_size, target seq len]
+            decoder_output = self.linear_mapping(decoder_output)
+            # print("From model.forward(): decoder_output size after linear_mapping = {}".format(decoder_output.size()))
         
-        # Pass through the linear mapping
-        # shape [batch_size, target seq len]
-        decoder_output = self.linear_mapping(decoder_output)
-        # print("From model.forward(): decoder_output size after linear_mapping = {}".format(decoder_output.size()))
+        else:
+
+            # Flatten the encoder output
+            src = src.view(src.size(0), -1)
+            
+            # Pass through the linear mapping
+            decoder_output = self.linear_mapping_zero_decoder(src)
+            
+            # Shape: [batch_size, 1, num_predicted_features] to match the shape of the decoder output
+            decoder_output = decoder_output.unsqueeze(1)
+
+            # Set decoder attention weights to None
+            sa_weights = None
+            mha_weights = None
         
         return decoder_output, sa_weights_encoder, sa_weights, mha_weights

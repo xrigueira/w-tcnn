@@ -79,7 +79,7 @@ def read_data(data_dir: Union[str, Path] = 'data', station: int=901, timestamp_c
     data_dir: str or Path object specifying the path to the directory containing the data.
     station: int, the station number to read data from.
     tgt_col_name: str, the name of the column containing the target variable.
-    timestamp_col_name: str, the name of the column or named index containing the timestamps-
+    timestamp_col_name: str, the name of the column or named index containing the timestamps.
     
     Returns:
     data (pd.DataFrame): data read an loaded as a Pandas DataFrame
@@ -197,6 +197,96 @@ class EarlyStopping:
         # torch.save(model.state_dict(), path + '/' + 'checkpoint.pth')
         self.val_loss_min = val_loss
 
+class LearningRateSchedulerPlateau:
+    
+    def __init__(self, optimizer, patience, factor):
+        self.optimizer = optimizer
+        self.mode = 'min'
+        self.factor = factor
+        self.patience = patience
+        self.threshold = 1e-4
+        self.threshold_mode = 'rel'
+        self.cooldown = 0
+        self.min_lr = 1e-6
+        self.eps = 1e-8
+
+        self.val_loss_min = np.Inf
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, self.mode, self.factor, self.patience,
+                                                                    self.threshold, self.threshold_mode, self.cooldown, self.min_lr, 
+                                                                    self.eps)
+        self.prev_lr = [param_group['lr'] for param_group in self.optimizer.param_groups]
+
+    def __call__(self, val_loss):
+        self.scheduler.step(val_loss)
+
+        # Output the new learning rate if it is updated
+        for i, param_group in enumerate(self.optimizer.param_groups):
+            new_lr = param_group['lr']
+            if new_lr != self.prev_lr[i]:
+                print(f'Learning rate updated ({self.prev_lr[i]:.6f} --> {new_lr:.6f})')
+                self.prev_lr[i] = new_lr
+        
+        # Output when the validation loss is reduced
+        if val_loss < self.val_loss_min:
+            print(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f})')
+            self.val_loss_min = val_loss
+
+class LearningRateSchedulerLinear:
+    
+    def __init__(self, optimizer, start_factor, end_factor, n_epochs):
+        self.optimizer = optimizer
+        self.start_factor = start_factor
+        self.end_factor = end_factor
+        self.n_epochs = n_epochs
+        
+        self.val_loss_min = np.Inf
+        self.scheduler = torch.optim.lr_scheduler.LinearLR(self.optimizer, start_factor=self.start_factor, 
+                                                        end_factor=self.end_factor, total_iters=self.n_epochs, 
+                                                        last_epoch=-1)
+        self.prev_lr = [param_group['lr'] for param_group in self.optimizer.param_groups]
+
+    def __call__(self, val_loss):
+        self.scheduler.step()
+
+        # Output the new learning rate if it is updated
+        for i, param_group in enumerate(self.optimizer.param_groups):
+            new_lr = param_group['lr']
+            if new_lr != self.prev_lr[i]:
+                print(f'Learning rate updated ({self.prev_lr[i]:.6f} --> {new_lr:.6f})')
+                self.prev_lr[i] = new_lr
+        
+        # Output when the validation loss is reduced
+        if val_loss < self.val_loss_min:
+            print(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f})')
+            self.val_loss_min = val_loss
+
+class LearningRateSchedulerStep:
+
+    def __init__(self, optimizer, step_size, gamma):
+        self.optimizer = optimizer
+        self.step_size = step_size
+        self.gamma = gamma
+
+        self.val_loss_min = np.Inf
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=self.step_size, gamma=self.gamma,
+                                                        last_epoch=-1)
+        self.prev_lr = [param_group['lr'] for param_group in self.optimizer.param_groups]
+
+    def __call__(self, val_loss):
+        self.scheduler.step()
+
+        # Output the new learning rate if it is updated
+        for i, param_group in enumerate(self.optimizer.param_groups):
+            new_lr = param_group['lr']
+            if new_lr != self.prev_lr[i]:
+                print(f'Learning rate updated ({self.prev_lr[i]:.6f} --> {new_lr:.6f})')
+                self.prev_lr[i] = new_lr
+        
+        # Output when the validation loss is reduced
+        if val_loss < self.val_loss_min:
+            print(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f})')
+            self.val_loss_min = val_loss
+
 # Define Nash-Sutcliffe efficiency
 def get_nash_sutcliffe_efficiency(observed, modeled):
     mean_observed = np.mean(observed)
@@ -259,7 +349,7 @@ def get_multivariate_rmse(multivariate_modeled, multivariate_observed):
     
     return multivariate_rmse
 
-def metrics_transformer(truth, hat, phase):
+def metrics_transformer(truths, hats, phase, run):
     """
     Calculate the Nash-Sutcliffe efficiency, root mean square error,
     percent bias, and Kling-Gupta efficiency by for each variate of
@@ -276,21 +366,51 @@ def metrics_transformer(truth, hat, phase):
     pbias (list): percent bias
     kge (list): Kling-Gupta efficiency
     """
-    
-    nse = get_multivariate_nash_sutcliffe_efficiency(truth, hat)
-    rmse = get_multivariate_rmse(truth, hat)
-    pbias = get_multivariate_pbias(truth, hat)
-    kge = get_multivariate_kge(truth, hat)
-    
-    # print(f'\n-- {phase}  results')
-    # print(f'Nash-Sutcliffe efficiency: {nse}')
-    # print(f'Root mean square error: {rmse}')
-    # print(f'Percent bias: {pbias}')
-    # print(f'Kling-Gupta efficiency: {kge}')
 
-    return nse, rmse, pbias, kge
+    # Define objects to store the results
+    nse_final, rmse_final, pbias_final, kge_final = [], [], [], []
 
-def metrics_cnn(truth, hat, phase):
+    # Parse the truths and hats objects
+    for tgt_y, y_hat in truths, hats:
+
+        nse = get_multivariate_nash_sutcliffe_efficiency(truth=tgt_y, hat=y_hat)
+        rmse = get_multivariate_rmse(truth=tgt_y, hat=y_hat)
+        pbias = get_multivariate_pbias(truth=tgt_y, hat=y_hat)
+        kge = get_multivariate_kge(truth=tgt_y, hat=y_hat)
+
+        # Append results
+        nse_final.append(nse)
+        rmse_final.append(rmse)
+        pbias_final.append(pbias)
+        kge_final.append(kge)
+    
+    # Get the mean of each metric by variable
+    nse_final, rmse_final, pbias_final, kge_final = np.array(nse_final), np.array(rmse_final), np.array(pbias_final), np.array(kge_final)
+
+    # Create a dictionary with the metrics
+    metrics = {
+        'Nash-Sutcliffe efficiency': nse_final,
+        'Root mean squared error': rmse_final,
+        'Percent bias': pbias_final,
+        'Kling-Gupta efficiency': kge_final
+    }
+
+    # Convert the dictionary to a DataFrame
+    df = pd.DataFrame(metrics, index=['am', 'co', 'do', 'ph', 'pr', 'tu', 'wt'])
+    
+    # Write the results to a text file
+    results_path = f'results/run_{run}/results.txt'
+    with open(results_path, 'a') as f:
+        f.write(f'-- {phase} results\n')
+        f.write(df.to_string())  # Convert DataFrame to a string and write it
+        f.write('\n\n')
+
+    # Close the file
+    f.close()
+
+    return nse_final, rmse_final, pbias_final, kge_final
+
+def metrics_cnn(truth, hat, phase, run):
     """
     Calculate the Nash-Sutcliffe efficiency, root mean square error,
     percent bias, and Kling-Gupta efficiency of the model's predictions.
@@ -308,10 +428,14 @@ def metrics_cnn(truth, hat, phase):
     rmse = np.sqrt(mean_squared_error(truth, hat))
     r2 = r2_score(truth, hat)
     
-    
-    print(f'\n-- {phase}  results')
-    print(f'Root mean square error: {rmse}')
-    print(f'R-squared: {r2}')
+    with open('results/run_{}/results.txt'.format(run), 'a') as f:
+        f.write(f'-- {phase} results\n')
+        f.write(f'Root mean square error: {rmse}\n')
+        f.write(f'R-squared: {r2}\n')
+        f.write('\n')
+
+        # Close the file
+        f.close()
 
     return rmse, r2
 
@@ -359,12 +483,12 @@ def plots_transformer(date, src, truth, hat, weights, tgt_percentage, station, p
 
     # Loop over each column of the truth
     for i in range(ground_truth.shape[1]):
-        ax2.plot(ground_truth[:, i], label=f'{labels[i]}', color=colors_ground_truth[i])
+        ax2.plot(ground_truth[:, i], label=f'{labels[i]}', color=colors_ground_truth[i], linewidth=0.5)
 
     # Loop over each column of the prediction and plot it starting when the concatenated part of tgt ends
     tgt_length = int(len(src)*tgt_percentage)
     for i in range(hat.shape[1]):
-        ax2.plot(range(tgt_length, tgt_length + hat.shape[0]), hat[:, i], color=colors_hat[i])
+        ax2.plot(range(tgt_length, tgt_length + hat.shape[0]), hat[:, i], color=colors_hat[i], linewidth=0.5)
 
     plt.title(f'Results for instance {date.day}-{date.month}-{date.year} of station {station}')
     plt.xlabel(r'time (15 min)')
@@ -405,8 +529,8 @@ def plots_cnn(truth, hat, station, phase, run):
     """
 
     plt.figure();plt.clf()
-    plt.plot(truth, label='observed')
-    plt.plot(hat, label='predicted')
+    plt.plot(truth, label='observed', linewidth=0.5) # Transform into a confusion matrix and plot it as a heatmap
+    plt.plot(hat, label='predicted', linewidth=0.5)
     plt.title(f'Station {station} {phase} results')
     plt.xlabel(r'time (15 min)')
     plt.ylabel(r'y')
@@ -415,7 +539,7 @@ def plots_cnn(truth, hat, station, phase, run):
 
     plt.savefig(f'results/run_cnn_{run}/cnn_{phase}.png', dpi=300)
 
-def logger_transformer(run, batches, d_model, n_heads, encoder_layers, decoder_layers, dim_ll_encoder, dim_ll_decoder, lr, epochs):
+def logger_transformer(run, batches, d_model, n_heads, encoder_layers, decoder_layers, dim_ll_encoder, dim_ll_decoder, lr, loss, epochs, seed, run_time):
 
     """Save the results of each run. The results
     are the hyperparameters of the model and the
@@ -442,12 +566,16 @@ def logger_transformer(run, batches, d_model, n_heads, encoder_layers, decoder_l
         f.write('dim_ll_encoder: ' + str(dim_ll_encoder) + '\n')
         f.write('dim_ll_decoder: ' + str(dim_ll_decoder) + '\n')
         f.write('lr: ' + str(lr) + '\n')
+        f.write('loss: ' + str(loss) + '\n')
         f.write('n_epochs: ' + str(epochs) + '\n')
+        f.write('seed: ' + str(seed) + '\n')
+        f.write('run_time: ' + str(run_time) + '\n')
+        f.write('\n')
 
         # Close the file
         f.close()
 
-def logger_cnn(run, batches, input_channels, channels, d_fc, lr, epochs):
+def logger_cnn(run, batches, input_channels, channels, d_fc, lr, loss, epochs, seed, run_time):
 
     """Save the results of each run. The results
     are the hyperparameters of the model and the
@@ -470,7 +598,11 @@ def logger_cnn(run, batches, input_channels, channels, d_fc, lr, epochs):
         f.write('channels: ' + str(channels) + '\n')
         f.write('d_fc: ' + str(d_fc) + '\n')
         f.write('lr: ' + str(lr) + '\n')
+        f.write('loss: ' + str(loss) + '\n')
         f.write('n_epochs: ' + str(epochs) + '\n')
+        f.write('seed: ' + str(seed) + '\n')
+        f.write('run_time: ' + str(run_time) + '\n')
+        f.write('\n')
 
         # Close the file
         f.close()
