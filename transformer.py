@@ -169,11 +169,12 @@ if __name__ == '__main__':
     src_variables = [f'ammonium_{station}', f'conductivity_{station}', 
                     f'dissolved_oxygen_{station}', f'pH_{station}', 
                     f'precipitation_{station}', f'turbidity_{station}',
-                    f'water_temperature_{station}']
+                    f'water_temperature_{station}', 'label']
     tgt_variables = [f'ammonium_{station}', f'conductivity_{station}', 
                     f'dissolved_oxygen_{station}', f'pH_{station}', 
                     f'precipitation_{station}', f'turbidity_{station}',
-                    f'water_temperature_{station}']
+                    f'water_temperature_{station}', 'label']
+
     # input_variables would be just the src or tgt because we are predicting the tgt from the src, and not a tgt that is not in the src
     input_variables = src_variables
     timestamp_col_name = "date"
@@ -181,8 +182,8 @@ if __name__ == '__main__':
     # Only use data from this date and onwards
     cutoff_date = datetime.datetime(2005, 1, 1) 
 
-    d_model = 64
-    n_heads = 4
+    d_model = 16
+    n_heads = 2
     n_encoder_layers = 1
     n_decoder_layers = 1 # Remember that with the current implementation it always has a decoder layer that returns the weights
     encoder_sequence_len = 384 # length of input given to encoder used to create the pre-summarized windows
@@ -196,7 +197,7 @@ if __name__ == '__main__':
     batch_first = True
 
     # Run parameters
-    lr = 0.001
+    lr = 0.0005
     epochs = 300
 
     # Get device

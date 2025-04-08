@@ -470,9 +470,9 @@ def plots_transformer(date, src, truth, hat, weights, tgt_percentage, station, p
     ground_truth = np.concatenate((src[-int(len(src)*tgt_percentage):], truth))
     
     # Plot the truth and the prediction
-    colors_ground_truth = ['red', 'dodgerblue', 'mediumpurple', 'dimgrey', 'chocolate', 'goldenrod', 'green']
-    colors_hat = ['salmon', 'lightskyblue', 'plum', 'darkgrey', 'orange', 'gold', 'yellowgreen']
-    labels = ['am', 'co', 'do', 'ph', 'pr', 'tu', 'wt']
+    colors_ground_truth = ['red', 'dodgerblue', 'mediumpurple', 'dimgrey', 'chocolate', 'goldenrod', 'green', 'black']
+    colors_hat = ['salmon', 'lightskyblue', 'plum', 'darkgrey', 'orange', 'gold', 'yellowgreen', 'black']
+    labels = ['am', 'co', 'do', 'ph', 'pr', 'tu', 'wt', 'lb']
 
     # Create the plot
     fig, ax1 = plt.subplots(figsize=(10, 6))
