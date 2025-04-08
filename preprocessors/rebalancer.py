@@ -29,4 +29,4 @@ def rebalancer(station):
     filtered_data = data[data['day'].isin(selected_days)].drop(columns=['day'])
 
     # Save the balanced dataset
-    filtered_data.to_csv(f'data/labeled_{station}.csv', encoding='utf-8', sep=',', index=False)
+    filtered_data.to_csv(f'data/labeled_{station}_bal.csv', encoding='utf-8', sep=',', index=False)
