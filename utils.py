@@ -371,12 +371,12 @@ def metrics_transformer(truths, hats, phase, run):
     nse_final, rmse_final, pbias_final, kge_final = [], [], [], []
 
     # Parse the truths and hats objects
-    for tgt_y, y_hat in truths, hats:
+    for tgt_y, y_hat in zip(truths, hats):
 
-        nse = get_multivariate_nash_sutcliffe_efficiency(truth=tgt_y, hat=y_hat)
-        rmse = get_multivariate_rmse(truth=tgt_y, hat=y_hat)
-        pbias = get_multivariate_pbias(truth=tgt_y, hat=y_hat)
-        kge = get_multivariate_kge(truth=tgt_y, hat=y_hat)
+        nse = get_multivariate_nash_sutcliffe_efficiency(tgt_y, y_hat)
+        rmse = get_multivariate_rmse(tgt_y, y_hat)
+        pbias = get_multivariate_pbias(tgt_y, y_hat)
+        kge = get_multivariate_kge(tgt_y, y_hat)
 
         # Append results
         nse_final.append(nse)
@@ -386,6 +386,10 @@ def metrics_transformer(truths, hats, phase, run):
     
     # Get the mean of each metric by variable
     nse_final, rmse_final, pbias_final, kge_final = np.array(nse_final), np.array(rmse_final), np.array(pbias_final), np.array(kge_final)
+    nse_final = np.mean(nse_final, axis=0)
+    rmse_final = np.mean(rmse_final, axis=0)
+    pbias_final = np.mean(pbias_final, axis=0)
+    kge_final = np.mean(kge_final, axis=0)
 
     # Create a dictionary with the metrics
     metrics = {
@@ -399,7 +403,7 @@ def metrics_transformer(truths, hats, phase, run):
     df = pd.DataFrame(metrics, index=['am', 'co', 'do', 'ph', 'pr', 'tu', 'wt'])
     
     # Write the results to a text file
-    results_path = f'results/run_{run}/results.txt'
+    results_path = f'results/run_t_{run}/results.txt'
     with open(results_path, 'a') as f:
         f.write(f'-- {phase} results\n')
         f.write(df.to_string())  # Convert DataFrame to a string and write it

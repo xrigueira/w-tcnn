@@ -96,8 +96,9 @@ def test(dataloader, model, src_mask, memory_mask, tgt_mask, phase, dates, devic
     # dates = data.index[testing_indices[0][0]:testing_indices[-1][1]]
 
     # Set up objects to store metrics for each instance
-    tgt_ys = torch.zeros(len(dataloader), device=device)
-    y_hats = torch.zeros(len(dataloader), device=device)
+    src, tgt, tgt_y, src_p, tgt_p = next(iter(dataloader)) # Get the first batch to get the shape of the tensors
+    tgt_ys = torch.zeros((len(dataloader), tgt.shape[1], tgt.shape[2]), device=device)  # Shape: [num_batches, seq_len, num_features]
+    y_hats = torch.zeros((len(dataloader), tgt.shape[1], tgt.shape[2]), device=device)  # Shape: [num_batches, seq_len, num_features]
 
     # Define dictionary to store the attention weights, ground truth and predictions
     results = {}
@@ -114,17 +115,14 @@ def test(dataloader, model, src_mask, memory_mask, tgt_mask, phase, dates, devic
             y_hat, sa_weights_encoder, sa_weights, mha_weights = model(src=src, tgt=tgt, src_mask=src_mask, memory_mask=memory_mask, tgt_mask=tgt_mask)
 
             # Store ground truth and prediction
-            tgt_ys[i] = tgt_y.item()
-            y_hats[i] = y_hat.item()
+            tgt_ys[i] = tgt_y
+            y_hats[i] = y_hat
 
             # Squeeze and pass src, tgt_y, pred, and weights to the cpu for plotting purposes
             src = src.squeeze(0).cpu().detach().numpy()
             tgt_y = tgt_y.squeeze(0).cpu().detach().numpy()
             y_hat = y_hat.squeeze(0).cpu().detach().numpy()
             sa_weights_encoder = sa_weights_encoder.squeeze(0).cpu().detach().numpy()
-
-            # Get metrics
-            nse, rmse, pbias, kge = utils.metrics_transformer(tgt_y, y_hat, phase)
 
             # Save the results
             if phase == 'test':
@@ -133,19 +131,15 @@ def test(dataloader, model, src_mask, memory_mask, tgt_mask, phase, dates, devic
                     'tgt_y': tgt_y,
                     'y_hat': y_hat,
                     'weights': sa_weights_encoder,
-                    'nse': nse,
-                    'rmse': rmse,
-                    'pbias': pbias,
-                    'kge': kge
                 }
     
     # Save the dictionary to numpy file
     if phase != '': # if phase == 'test':
-        np.save(f'results/run_{run}/results_{phase}.npy', results, allow_pickle=True, fix_imports=True)
+        np.save(f'results/run_t_{run}/results_{phase}.npy', results, allow_pickle=True, fix_imports=True)
     
     # Pass tgt_ys and y_hats to CPU and convert to numpy arrays
     tgt_ys = tgt_ys.cpu().numpy()
-    y_hats = y_hat.cpu().numpy()
+    y_hats = y_hats.cpu().numpy()
 
     return tgt_ys, y_hats
 
@@ -170,7 +164,7 @@ if __name__ == '__main__':
     run = 0
     
     # Hyperparams
-    batch_size = 16
+    batch_size = 128
     validation_size = 0.125
     src_variables = [f'ammonium_{station}', f'conductivity_{station}', 
                     f'dissolved_oxygen_{station}', f'pH_{station}', 
@@ -187,16 +181,15 @@ if __name__ == '__main__':
     # Only use data from this date and onwards
     cutoff_date = datetime.datetime(2005, 1, 1) 
 
-    d_model = 16
-    n_heads = 2
+    d_model = 64
+    n_heads = 4
     n_encoder_layers = 1
     n_decoder_layers = 1 # Remember that with the current implementation it always has a decoder layer that returns the weights
-    encoder_sequence_len = 2016 # length of input given to encoder used to create the pre-summarized windows
-    # crushed_encoder_sequence_len = 53 # Encoder sequence length afther summarizing the data when defining the dataset 53
-    decoder_sequence_len = 672 # length of input given to decoder
-    output_sequence_len = 672 # Target sequence length. If 15 min data data and length = 672, it predicts 7 days ahead
-    in_features_encoder_linear_layer = 256
-    in_features_decoder_linear_layer = 256
+    encoder_sequence_len = 384 # length of input given to encoder used to create the pre-summarized windows
+    decoder_sequence_len = 96 # length of input given to decoder
+    output_sequence_len = 96 # Target sequence length.
+    in_features_encoder_linear_layer = 128
+    in_features_decoder_linear_layer = 128
     max_sequence_len = encoder_sequence_len
     window_size = encoder_sequence_len + output_sequence_len # Used to slice data into sub-sequences
     step_size = 96 # Step size, i.e. how many time steps does the moving window move at each step
@@ -204,7 +197,7 @@ if __name__ == '__main__':
 
     # Run parameters
     lr = 0.001
-    epochs = 1
+    epochs = 300
 
     # Get device
     device = ('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
@@ -218,27 +211,28 @@ if __name__ == '__main__':
     training_val_upper_bound = datetime.datetime(2017, 12, 31)
 
     # Get the global index of the train_upper_bound to later subset the data indices
-    training_val_upper_index = data.index.get_loc(training_val_upper_bound)
-    
+    training_val_upper_index = round(data.index.get_loc(training_val_upper_bound) / step_size)
+
     # Make list of (start_idx, end_idx) pairs that are used to slice the time series sequence into chuncks
     data_indices = utils.get_indices(data=data, window_size=window_size, step_size=step_size)
-
+    
     # Divide data into train and validation data with a 8:1 ratio using the indices.
-    training_validation_indices = data_indices[:(training_val_upper_index-encoder_sequence_len)]
+    training_validation_indices = data_indices[:(training_val_upper_index)]
     training_indices = training_validation_indices[:(round(len(training_validation_indices) * (1-validation_size)))]
     validation_indices = training_validation_indices[-round(len(training_validation_indices) * validation_size):]
-    testing_indices = data_indices[(training_val_upper_index-encoder_sequence_len):]
+    testing_indices = data_indices[(training_val_upper_index):]
     
     # Get the complete range of dates for the train and validation sets
-    dates_train_validation = pd.date_range(start=training_val_lower_bound + datetime.timedelta(days=encoder_sequence_len), periods=len(training_indices) + len(validation_indices), freq='D')
-    
+    dates = (pd.Series(data.index.date).drop_duplicates().sort_values()).to_list()  # Remove duplicates and sort
+    print(dates)
     # Subset the test and validation sets
-    dates_train = dates_train_validation[[i[0] for i in training_indices]]
-    dates_validation = dates_train_validation[[i[0] for i in validation_indices]]
+    dates_train_validation = dates[int(window_size/step_size):len(training_validation_indices)]
+    dates_train = dates_train_validation[:(round(len(training_validation_indices) * (1-validation_size)))]
+    dates_validation = dates_train_validation[-round(len(training_validation_indices) * validation_size):]
     
-    # Get the complete range of dates for the test set
-    dates_test = pd.date_range(start=training_val_upper_bound, periods=len(testing_indices), freq='15min')
-
+    # # Get the complete range of dates for the test set
+    dates_test = dates[len(training_validation_indices):]
+    
     # Make instance of the custom dataset class
     training_data = ds.TransformerDataset(task_type=task_type, data=torch.tensor(data[input_variables].values).float(),
                                         indices=training_indices, encoder_sequence_len=encoder_sequence_len, 
@@ -258,12 +252,9 @@ if __name__ == '__main__':
     training_data = DataLoader(training_data, batch_size, shuffle=True)
     validation_data = DataLoader(validation_data, batch_size, shuffle=True)
     testing_data = DataLoader(testing_data, batch_size=1, shuffle=False)
-    
-    # # Update the encoder sequence length to its crushed version
-    # encoder_sequence_len = crushed_encoder_sequence_len
 
     # Instantiate the transformer model and send it to device
-    model = tst.TimeSeriesTransformer(input_size=len(src_variables), decoder_sequence_len=decoder_sequence_len, decoder_sequence_len=output_sequence_len,
+    model = tst.TimeSeriesTransformer(input_size=len(src_variables), encoder_sequence_len=encoder_sequence_len, decoder_sequence_len=decoder_sequence_len,
                                     batch_first=batch_first, d_model=d_model, n_encoder_layers=n_encoder_layers, n_decoder_layers=n_decoder_layers, 
                                     n_heads=n_heads, dropout_encoder=0.2, dropout_decoder=0.2, dropout_pos_encoder=0.1, 
                                     dim_feedforward_encoder=in_features_encoder_linear_layer, dim_feedforward_decoder=in_features_decoder_linear_layer, 
@@ -319,7 +310,7 @@ if __name__ == '__main__':
         epoch_val_loss = val(validation_data, model, src_mask, memory_mask, tgt_mask, loss_function, device, df_validation, epoch=t)
 
         # learning rate scheduling
-        scheduler.step(epoch_val_loss)
+        scheduler(epoch_val_loss)
 
         # Early stopping
         early_stopping(epoch_val_loss, model, path='checkpoints')
@@ -344,39 +335,42 @@ if __name__ == '__main__':
     utils.logger_transformer(run=run, batches=batch_size, d_model=d_model, n_heads=n_heads,
                 encoder_layers=n_encoder_layers, decoder_layers=n_decoder_layers,
                 dim_ll_encoder=in_features_encoder_linear_layer, dim_ll_decoder=in_features_decoder_linear_layer,
-                lr=lr, epochs=epochs, seed=seed, run_time=(time.time() - start_time))
+                lr=lr, loss=epoch_val_loss, epochs=epochs, seed=seed, run_time=(time.time() - start_time))
     
     # Finalize the plot
     plt.ioff()  # Turn off interactive mode
 
     # Save and close the plot
-    plt.savefig(f'results/run_{run}/loss.png', dpi=300)
+    plt.savefig(f'results/run_t_{run}/loss.png', dpi=300)
     plt.close()
 
     # Save the model
-    torch.save(model, f'results/run_{run}/transformer_model.pth')
-    print(f'Saved PyTorch entire model to results/run_{run}/model.pth')
+    torch.save(model, f'results/run_t_{run}/transformer_model.pth')
+    print(f'Saved PyTorch entire model to results/run_t_{run}/model.pth')
 
     # # Load the model
-    # model = torch.load("results/run_{run}/transformer_model.pth", map_location=torch.device('cpu')).to(device)
+    # model = torch.load("results/run_t_{run}/transformer_model.pth", map_location=torch.device('cpu')).to(device)
     # print('Loaded PyTorch model from results/models/transformer_model.pth')
 
     # Inference
-    tgt_ys_train, y_hats_train = test(training_data, model, src_mask, memory_mask, tgt_mask, 'train', dates_train, device)
-    tgt_ys_val, y_hats_val = test(validation_data, model, src_mask, memory_mask, tgt_mask, 'validation', dates_validation, device)
+    # tgt_ys_train, y_hats_train = test(training_data, model, src_mask, memory_mask, tgt_mask, 'train', dates_train, device)
+    # tgt_ys_val, y_hats_val = test(validation_data, model, src_mask, memory_mask, tgt_mask, 'validation', dates_validation, device)
     tgt_ys_test, y_hats_test = test(testing_data, model, src_mask, memory_mask, tgt_mask, 'test', dates_test, device)
 
     # Load results object
     phase = 'test'
-    results = np.load(f'results/run_{run}/results_{phase}.npy', allow_pickle=True, fix_imports=True)
+    results = np.load(f'results/run_t_{run}/results_{phase}.npy', allow_pickle=True, fix_imports=True).item()  # Convert back to dict
 
-    # Plot results
-    for date in results:
-        utils.plots_transformer(date=date, src=date['src'], tgt_y=date['tgt_y'], y_hat=date['y_hat'], weights=date['weights'], 
-                                        tgt_percentage=1, station=station, phase=phase, 
-                                        instance=date)
+    # Plot results for the first 25 dates
+    plot_dates = [datetime.date(2020, 11, 22), datetime.date(2020, 11, 23), datetime.date(2020, 11, 24), datetime.date(2020, 11, 25), datetime.date(2020, 11, 26), datetime.date(2020, 11, 27),
+                datetime.date(2022, 11, 16), datetime.date(2022, 11, 17), datetime.date(2022, 11, 18), datetime.date(2022, 11, 19), datetime.date(2022, 11, 20), datetime.date(2022, 11, 21)]
+    for i, (date, data) in enumerate(results.items()):
+        if date in plot_dates:
+            utils.plots_transformer(date=date, src=data['src'], truth=data['tgt_y'], hat=data['y_hat'], weights=data['weights'], 
+                                    tgt_percentage=1, station=station, phase=phase, 
+                                    instance=date)
 
-    # Metrics
-    utils.metrics_transformer(tgt_ys_train, y_hats_train, 'train', run=run)
-    utils.metrics_transformer(tgt_ys_val, y_hats_val, 'validation', run=run)
-    utils.metrics_transformer(tgt_ys_test, y_hats_test, 'test', run=run)
+    # # Metrics
+    # utils.metrics_transformer(tgt_ys_train, y_hats_train, 'train', run=run)
+    # utils.metrics_transformer(tgt_ys_val, y_hats_val, 'validation', run=run)
+    # utils.metrics_transformer(tgt_ys_test, y_hats_test, 'test', run=run)
