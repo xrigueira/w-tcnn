@@ -123,7 +123,7 @@ class TransformerDataset(Dataset):
         # decoder input. As per the paper, it must have the same dimension as the 
         # target sequence, and it must contain the last value of src, and all
         # values of tgt_y except the last (i.e. it must be shifted right by 1)
-        tgt = sequence[encoder_sequence_len-1:len(sequence)-1, :-1] # Selects only target variable
+        tgt = sequence[(encoder_sequence_len-decoder_sequence_len):encoder_sequence_len, :-1] # Selects only target variable
         
         assert len(tgt) == tgt_sequence_len, "Length of tgt does not match target sequence length"
 

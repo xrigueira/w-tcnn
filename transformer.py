@@ -225,7 +225,7 @@ if __name__ == '__main__':
     
     # Get the complete range of dates for the train and validation sets
     dates = (pd.Series(data.index.date).drop_duplicates().sort_values()).to_list()  # Remove duplicates and sort
-    print(dates)
+    
     # Subset the test and validation sets
     dates_train_validation = dates[int(window_size/step_size):len(training_validation_indices)]
     dates_train = dates_train_validation[:(round(len(training_validation_indices) * (1-validation_size)))]
@@ -358,18 +358,18 @@ if __name__ == '__main__':
     # tgt_ys_val, y_hats_val = test(validation_data, model, src_mask, memory_mask, tgt_mask, 'validation', dates_validation, device)
     tgt_ys_test, y_hats_test = test(testing_data, model, src_mask, memory_mask, tgt_mask, 'test', dates_test, device)
 
-    # Load results object
-    phase = 'test'
-    results = np.load(f'results/run_t_{run}/results_{phase}.npy', allow_pickle=True, fix_imports=True).item()  # Convert back to dict
+    # # Load results object
+    # phase = 'test'
+    # results = np.load(f'results/run_t_{run}/results_{phase}.npy', allow_pickle=True, fix_imports=True).item()  # Convert back to dict
 
-    # Plot results for the first 25 dates
-    plot_dates = [datetime.date(2020, 11, 22), datetime.date(2020, 11, 23), datetime.date(2020, 11, 24), datetime.date(2020, 11, 25), datetime.date(2020, 11, 26), datetime.date(2020, 11, 27),
-                datetime.date(2022, 11, 16), datetime.date(2022, 11, 17), datetime.date(2022, 11, 18), datetime.date(2022, 11, 19), datetime.date(2022, 11, 20), datetime.date(2022, 11, 21)]
-    for i, (date, data) in enumerate(results.items()):
-        if date in plot_dates:
-            utils.plots_transformer(date=date, src=data['src'], truth=data['tgt_y'], hat=data['y_hat'], weights=data['weights'], 
-                                    tgt_percentage=1, station=station, phase=phase, 
-                                    instance=date)
+    # # Plot results for the first 25 dates
+    # plot_dates = [datetime.date(2020, 11, 22), datetime.date(2020, 11, 23), datetime.date(2020, 11, 24), datetime.date(2020, 11, 25), datetime.date(2020, 11, 26), datetime.date(2020, 11, 27),
+    #             datetime.date(2022, 11, 16), datetime.date(2022, 11, 17), datetime.date(2022, 11, 18), datetime.date(2022, 11, 19), datetime.date(2022, 11, 20), datetime.date(2022, 11, 21)]
+    # for i, (date, data) in enumerate(results.items()):
+    #     if date in plot_dates:
+    #         utils.plots_transformer(date=date, src=data['src'], truth=data['tgt_y'], hat=data['y_hat'], weights=data['weights'], 
+    #                                 tgt_percentage=1, station=station, phase=phase, 
+    #                                 instance=date)
 
     # # Metrics
     # utils.metrics_transformer(tgt_ys_train, y_hats_train, 'train', run=run)
