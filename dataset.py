@@ -215,10 +215,10 @@ class TransformerDataset(Dataset):
 
         return src
     
-class CNNDataset(Dataset):
+class UNetDataset(Dataset):
     
     """
-    Dataset class used for transformer models.
+    Dataset class used for UNet models.
     ----------
     Arguments:
         - data: tensor, the entire train, validation or test data sequence before any slicing. 
@@ -251,9 +251,9 @@ class CNNDataset(Dataset):
 
         sequence = self.data[start_idx:end_idx]
 
-        src, tgt = self._get_src_tgt(sequence=sequence)
+        src, tgt, tgt_abs = self._get_src_tgt(sequence=sequence)
 
-        return src, tgt
+        return src, tgt, tgt_abs
     
     def _get_src_tgt(self, sequence: torch.Tensor) -> Tuple[torch.tensor, torch.tensor]:
 
@@ -271,6 +271,10 @@ class CNNDataset(Dataset):
         src = sequence[:, :-1]
 
         # The target sequence against which the model output will be compared to compute loss
-        tgt = sequence[:, -1:].mean(dim=0).unsqueeze(0)
+        tgt = sequence[:, -1:].mean(dim=0)
 
-        return src, tgt
+        # The absolute target sequence [0 or 1] if the target is above or below 0.5
+        tgt_abs = (tgt > 0.5).float()
+        tgt_abs = tgt_abs
+
+        return src, tgt, tgt_abs

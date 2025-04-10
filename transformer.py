@@ -91,9 +91,6 @@ def val(dataloader, model, src_mask, memory_mask, tgt_mask, loss_function, devic
 
 # Define inference step
 def test(dataloader, model, src_mask, memory_mask, tgt_mask, phase, dates, device):
-    
-    # Get test dates
-    # dates = data.index[testing_indices[0][0]:testing_indices[-1][1]]
 
     # Set up objects to store metrics for each instance
     src, tgt, tgt_y, src_p, tgt_p = next(iter(dataloader)) # Get the first batch to get the shape of the tensors
@@ -125,7 +122,7 @@ def test(dataloader, model, src_mask, memory_mask, tgt_mask, phase, dates, devic
             sa_weights_encoder = sa_weights_encoder.squeeze(0).cpu().detach().numpy()
 
             # Save the results
-            if phase == 'test':
+            if phase != '':
                 results[dates[i]] = {
                     'src': src,
                     'tgt_y': tgt_y,

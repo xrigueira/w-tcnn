@@ -438,10 +438,9 @@ def metrics_transformer(truths, hats, phase, run):
 
     return mse_final, mae_final, r2_final
 
-def metrics_cnn(truth, hat, phase, run):
+def metrics_unet(truth, hat, phase, run):
     """
-    Calculate the Nash-Sutcliffe efficiency, root mean square error,
-    percent bias, and Kling-Gupta efficiency of the model's predictions.
+    Calculate the root mean square error, and confusion matrix
     ----------
     Arguments:
     truth (np.array): np.array, the observed values
@@ -450,22 +449,26 @@ def metrics_cnn(truth, hat, phase, run):
     
     Returns:
     rmse (float): root mean square error
-    r2 (float): r-squared value
+    confusion_matrix (np.array): confusion matrix
     """
     
     rmse = np.sqrt(mean_squared_error(truth, hat))
-    r2 = r2_score(truth, hat)
     
-    with open('results/run_{}/results.txt'.format(run), 'a') as f:
+    # Print confuision matrix
+    from sklearn.metrics import confusion_matrix
+    confusion_matrix = confusion_matrix(truth, hat)
+    
+    results_path = f'results/run_u_{run}/results.txt'
+    with open(results_path, 'a') as f:
         f.write(f'-- {phase} results\n')
         f.write(f'Root mean square error: {rmse}\n')
-        f.write(f'R-squared: {r2}\n')
+        f.write(f'Confusion matrix:\n{confusion_matrix}\n')
         f.write('\n')
 
         # Close the file
         f.close()
 
-    return rmse, r2
+    return rmse, confusion_matrix
 
 def plots_transformer(date, src, truth, hat, weights, tgt_percentage, station, phase, instance):
     
@@ -542,7 +545,7 @@ def plots_transformer(date, src, truth, hat, weights, tgt_percentage, station, p
     # Close the plot
     plt.close(fig)
 
-def plots_cnn(truth, hat, station, phase, run):
+def plots_unet(truth, hat, station, phase, run):
     
     """
     Plot the observed and predicted values
@@ -556,6 +559,7 @@ def plots_cnn(truth, hat, station, phase, run):
     None
     """
 
+    # Plot predictions
     plt.figure();plt.clf()
     plt.plot(truth, label='observed', linewidth=0.5) # Transform into a confusion matrix and plot it as a heatmap
     plt.plot(hat, label='predicted', linewidth=0.5)
@@ -565,7 +569,7 @@ def plots_cnn(truth, hat, station, phase, run):
     plt.legend()
     # plt.show()
 
-    plt.savefig(f'results/run_cnn_{run}/cnn_{phase}.png', dpi=300)
+    plt.savefig(f'results/run_y_{run}/u_{phase}.png', dpi=300)
 
 def logger_transformer(run, batches, d_model, n_heads, encoder_layers, decoder_layers, dim_ll_encoder, dim_ll_decoder, lr, loss, epochs, seed, run_time):
 
@@ -603,7 +607,7 @@ def logger_transformer(run, batches, d_model, n_heads, encoder_layers, decoder_l
         # Close the file
         f.close()
 
-def logger_cnn(run, batches, input_channels, channels, d_fc, lr, loss, epochs, seed, run_time):
+def logger_unet(run, batches, input_channels, channels, d_fc, lr, loss, epochs, seed, run_time):
 
     """Save the results of each run. The results
     are the hyperparameters of the model and the
@@ -615,11 +619,11 @@ def logger_cnn(run, batches, input_channels, channels, d_fc, lr, loss, epochs, s
     """
 
         # Create a directory to save the results
-    if not os.path.exists('results/run_cnn_{}'.format(run)):
-        os.makedirs('results/run_cnn_{}'.format(run))
+    if not os.path.exists('results/run_u_{}'.format(run)):
+        os.makedirs('results/run_u_{}'.format(run))
     
     # Save the hyperparameters in a text file
-    with open('results/run_cnn_{}/results.txt'.format(run), 'w') as f:
+    with open('results/run_u_{}/results.txt'.format(run), 'w') as f:
         f.write('batches: ' + str(batches) + '\n')
         f.write('d_model: ' + str(input_channels) + '\n')
         f.write('input_channels: ' + str(input_channels) + '\n')
