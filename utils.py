@@ -289,10 +289,15 @@ class LearningRateSchedulerStep:
 
 # Define Nash-Sutcliffe efficiency
 def get_nash_sutcliffe_efficiency(observed, modeled):
+    # Add small random noise to avoid division by zero when observed is constant
+    # observed = observed + np.random.normal(1e-4, 1e-6, size=observed.shape)
+    # modeled = modeled + np.random.normal(1e-4, 1e-6, size=modeled.shape)
+
     mean_observed = np.mean(observed)
     numerator = np.sum((observed - modeled)**2)
     denominator = np.sum((observed - mean_observed)**2)
     
+    # Calculate Nash-Sutcliffe efficiency
     nse = 1 - (numerator / denominator)
     
     return nse
@@ -323,6 +328,11 @@ def get_multivariate_pbias(multivariate_observed, multivariate_modeled):
 
 # Define function to calculate the Kling-Gupta efficiency
 def get_kge(observed, modeled):
+    # Add small random noise to avoid division by zero when observed is constant
+    # observed = observed + np.random.normal(0, 1e-10, size=observed.shape)
+    # modeled = modeled + np.random.normal(0, 1e-10, size=modeled.shape)
+    
+    # Calculate the Kling-Gupta efficiency
     r = pearsonr(observed, modeled)[0]
     alpha = np.std(modeled) / np.std(observed)
     beta = np.sum(modeled) / np.sum(observed)
@@ -339,21 +349,40 @@ def get_multivariate_kge(multivariate_modeled, multivariate_observed):
     
     return multivariate_kge
 
-def get_multivariate_rmse(multivariate_modeled, multivariate_observed):
+def get_multivariate_mse(multivariate_modeled, multivariate_observed):
 
-    multivariate_rmse = []
+    multivariate_mse = []
     for i in range(multivariate_observed.shape[1]):
-        rmse = np.sqrt(mean_squared_error(multivariate_observed[:, i].flatten(), 
-                                        multivariate_modeled[:, i].flatten()))
-        multivariate_rmse.append(rmse)
+        mse = mean_squared_error(multivariate_observed[:, i].flatten(), 
+                                        multivariate_modeled[:, i].flatten())
+        multivariate_mse.append(mse)
     
-    return multivariate_rmse
+    return multivariate_mse
+
+def get_multivariate_mae(multivariate_modeled, multivariate_observed):
+    
+        multivariate_mae = []
+        for i in range(multivariate_observed.shape[1]):
+            mae = np.mean(np.abs(multivariate_observed[:, i].flatten() - 
+                                multivariate_modeled[:, i].flatten()))
+            multivariate_mae.append(mae)
+        
+        return multivariate_mae
+
+def get_multivariate_r2(multivariate_modeled, multivariate_observed):
+    
+    multivariate_r2 = []
+    for i in range(multivariate_observed.shape[1]):
+        r2 = r2_score(multivariate_observed[:, i].flatten(), 
+                    multivariate_modeled[:, i].flatten())
+        multivariate_r2.append(r2)
+    
+    return multivariate_r2
 
 def metrics_transformer(truths, hats, phase, run):
     """
-    Calculate the Nash-Sutcliffe efficiency, root mean square error,
-    percent bias, and Kling-Gupta efficiency by for each variate of
-    the model's predictions.
+    Calculate the mean square error and mean absolute error
+    and r2 for each variate of the model's predictions.
     ----------
     Arguments:
     truth (np.array): np.array, the observed values
@@ -361,42 +390,37 @@ def metrics_transformer(truths, hats, phase, run):
     phase (str): the phase of the data. Must be one of "train", "val", or "test"
     
     Returns:
-    nse (list): Nash-Sutcliffe efficiency
-    rmse (list): root mean square error
-    pbias (list): percent bias
-    kge (list): Kling-Gupta efficiency
+    mse (list): root mean square error
+    mae (list): mean absolute error
+    r2 (list): r-squared value
     """
 
     # Define objects to store the results
-    nse_final, rmse_final, pbias_final, kge_final = [], [], [], []
+    mse_final, mae_final, r2_final = [], [], []
 
     # Parse the truths and hats objects
     for tgt_y, y_hat in zip(truths, hats):
 
-        nse = get_multivariate_nash_sutcliffe_efficiency(tgt_y, y_hat)
-        rmse = get_multivariate_rmse(tgt_y, y_hat)
-        pbias = get_multivariate_pbias(tgt_y, y_hat)
-        kge = get_multivariate_kge(tgt_y, y_hat)
+        mse = get_multivariate_mse(tgt_y, y_hat)
+        mae = get_multivariate_mae(tgt_y, y_hat)
+        r2 = get_multivariate_r2(tgt_y, y_hat)
 
         # Append results
-        nse_final.append(nse)
-        rmse_final.append(rmse)
-        pbias_final.append(pbias)
-        kge_final.append(kge)
+        mse_final.append(mse)
+        mae_final.append(mae)
+        r2_final.append(r2)
     
     # Get the mean of each metric by variable
-    nse_final, rmse_final, pbias_final, kge_final = np.array(nse_final), np.array(rmse_final), np.array(pbias_final), np.array(kge_final)
-    nse_final = np.mean(nse_final, axis=0)
-    rmse_final = np.mean(rmse_final, axis=0)
-    pbias_final = np.mean(pbias_final, axis=0)
-    kge_final = np.mean(kge_final, axis=0)
+    mse_final, mae_final, r2_final = np.array(mse_final), np.array(mae_final), np.array(r2_final)
+    mse_final = np.mean(mse_final, axis=0)
+    mae_final = np.mean(mae_final, axis=0)
+    r2_final = np.mean(r2_final, axis=0)
 
     # Create a dictionary with the metrics
     metrics = {
-        'Nash-Sutcliffe efficiency': nse_final,
-        'Root mean squared error': rmse_final,
-        'Percent bias': pbias_final,
-        'Kling-Gupta efficiency': kge_final
+        'Mean squared error': mse_final,
+        'Mean absolute error': mae_final,
+        'R-squared': r2_final,
     }
 
     # Convert the dictionary to a DataFrame
@@ -412,7 +436,7 @@ def metrics_transformer(truths, hats, phase, run):
     # Close the file
     f.close()
 
-    return nse_final, rmse_final, pbias_final, kge_final
+    return mse_final, mae_final, r2_final
 
 def metrics_cnn(truth, hat, phase, run):
     """
@@ -494,7 +518,7 @@ def plots_transformer(date, src, truth, hat, weights, tgt_percentage, station, p
     for i in range(hat.shape[1]):
         ax2.plot(range(tgt_length, tgt_length + hat.shape[0]), hat[:, i], color=colors_hat[i], linewidth=0.5)
 
-    plt.title(f'Results for instance {date.day}-{date.month}-{date.year} of station {station}')
+    plt.title(f'Results for instance {date.day}-{date.month}-{date.year}-{date.hour} of station {station}')
     plt.xlabel(r'time (15 min)')
     ax1.set_ylabel('Weights', color='dimgray')
     ax2.set_ylabel(r'Values', color='dimgray')
@@ -513,7 +537,7 @@ def plots_transformer(date, src, truth, hat, weights, tgt_percentage, station, p
     plt.tight_layout()
     # plt.show()
 
-    plt.savefig(f'plots/tplot_{date.day}_{date.month}_{date.year}.png', dpi=300)
+    plt.savefig(f'plots/tplot_{date.day}_{date.month}_{date.year}_{date.hour}.png', dpi=300)
 
     # Close the plot
     plt.close(fig)

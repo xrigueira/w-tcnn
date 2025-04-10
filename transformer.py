@@ -169,31 +169,31 @@ if __name__ == '__main__':
     src_variables = [f'ammonium_{station}', f'conductivity_{station}', 
                     f'dissolved_oxygen_{station}', f'pH_{station}', 
                     f'precipitation_{station}', f'turbidity_{station}',
-                    f'water_temperature_{station}', 'label']
+                    f'water_temperature_{station}']
     tgt_variables = [f'ammonium_{station}', f'conductivity_{station}', 
                     f'dissolved_oxygen_{station}', f'pH_{station}', 
                     f'precipitation_{station}', f'turbidity_{station}',
-                    f'water_temperature_{station}', 'label']
+                    f'water_temperature_{station}']
 
     # input_variables would be just the src or tgt because we are predicting the tgt from the src, and not a tgt that is not in the src
     input_variables = src_variables
     timestamp_col_name = "date"
 
     # Only use data from this date and onwards
-    cutoff_date = datetime.datetime(2005, 1, 1) 
+    cutoff_date = pd.Timestamp(2005, 1, 1) 
 
     d_model = 16
     n_heads = 2
     n_encoder_layers = 1
     n_decoder_layers = 1 # Remember that with the current implementation it always has a decoder layer that returns the weights
-    encoder_sequence_len = 384 # length of input given to encoder used to create the pre-summarized windows
-    decoder_sequence_len = 96 # length of input given to decoder
-    output_sequence_len = 96 # Target sequence length.
+    encoder_sequence_len = 96 # length of input given to encoder used to create the pre-summarized windows
+    decoder_sequence_len = 4 # length of input given to decoder
+    output_sequence_len = 4 # Target sequence length.
     in_features_encoder_linear_layer = 128
     in_features_decoder_linear_layer = 128
     max_sequence_len = encoder_sequence_len
     window_size = encoder_sequence_len + output_sequence_len # Used to slice data into sub-sequences
-    step_size = 96 # Step size, i.e. how many time steps does the moving window move at each step
+    step_size = 4 # Step size, i.e. how many time steps does the moving window move at each step
     batch_first = True
 
     # Run parameters
@@ -208,8 +208,8 @@ if __name__ == '__main__':
     data = utils.read_data(timestamp_col_name=timestamp_col_name)
     
     # Define the training and validation bounds
-    training_val_lower_bound = datetime.datetime(2005, 1, 1)
-    training_val_upper_bound = datetime.datetime(2017, 12, 31)
+    training_val_lower_bound = pd.Timestamp(2005, 1, 1)
+    training_val_upper_bound = pd.Timestamp(2017, 12, 31)
 
     # Get the global index of the train_upper_bound to later subset the data indices
     training_val_upper_index = round(data.index.get_loc(training_val_upper_bound) / step_size)
@@ -224,14 +224,15 @@ if __name__ == '__main__':
     testing_indices = data_indices[(training_val_upper_index):]
     
     # Get the complete range of dates for the train and validation sets
-    dates = (pd.Series(data.index.date).drop_duplicates().sort_values()).to_list()  # Remove duplicates and sort
+    # dates = (pd.Series(data.index.date).drop_duplicates().sort_values()).to_list()  # Remove duplicates and sort
+    dates = (pd.Series(data.index.floor('h')).drop_duplicates().sort_values()).to_list()  # Remove duplicates and sort
     
     # Subset the test and validation sets
     dates_train_validation = dates[int(window_size/step_size):len(training_validation_indices)]
     dates_train = dates_train_validation[:(round(len(training_validation_indices) * (1-validation_size)))]
     dates_validation = dates_train_validation[-round(len(training_validation_indices) * validation_size):]
     
-    # # Get the complete range of dates for the test set
+    # Get the complete range of dates for the test set
     dates_test = dates[len(training_validation_indices):]
     
     # Make instance of the custom dataset class
@@ -354,24 +355,25 @@ if __name__ == '__main__':
     # print('Loaded PyTorch model from results/models/transformer_model.pth')
 
     # Inference
-    # tgt_ys_train, y_hats_train = test(training_data, model, src_mask, memory_mask, tgt_mask, 'train', dates_train, device)
-    # tgt_ys_val, y_hats_val = test(validation_data, model, src_mask, memory_mask, tgt_mask, 'validation', dates_validation, device)
+    tgt_ys_train, y_hats_train = test(training_data_inference, model, src_mask, memory_mask, tgt_mask, 'train', dates_train, device)
+    tgt_ys_val, y_hats_val = test(validation_data_inference, model, src_mask, memory_mask, tgt_mask, 'validation', dates_validation, device)
     tgt_ys_test, y_hats_test = test(testing_data, model, src_mask, memory_mask, tgt_mask, 'test', dates_test, device)
 
-    # # Load results object
-    # phase = 'test'
-    # results = np.load(f'results/run_t_{run}/results_{phase}.npy', allow_pickle=True, fix_imports=True).item()  # Convert back to dict
+    # Load results object
+    phase = 'test'
+    results = np.load(f'results/run_t_{run}/results_{phase}.npy', allow_pickle=True, fix_imports=True).item()  # Convert back to dict
 
-    # # Plot results for the first 25 dates
-    # plot_dates = [datetime.date(2020, 11, 22), datetime.date(2020, 11, 23), datetime.date(2020, 11, 24), datetime.date(2020, 11, 25), datetime.date(2020, 11, 26), datetime.date(2020, 11, 27),
-    #             datetime.date(2022, 11, 16), datetime.date(2022, 11, 17), datetime.date(2022, 11, 18), datetime.date(2022, 11, 19), datetime.date(2022, 11, 20), datetime.date(2022, 11, 21)]
-    # for i, (date, data) in enumerate(results.items()):
-    #     if date in plot_dates:
-    #         utils.plots_transformer(date=date, src=data['src'], truth=data['tgt_y'], hat=data['y_hat'], weights=data['weights'], 
-    #                                 tgt_percentage=1, station=station, phase=phase, 
-    #                                 instance=date)
+    # Plot results some dates
+    plot_dates = pd.date_range(start=pd.Timestamp(2020, 11, 21, 0, 0, 0), 
+                            end=pd.Timestamp(2020, 11, 27, 23, 0, 0), 
+                            freq='h').to_list()
+    for i, (date, data) in enumerate(results.items()):
+        if date in plot_dates:
+            utils.plots_transformer(date=date, src=data['src'], truth=data['tgt_y'], hat=data['y_hat'], weights=data['weights'], 
+                                    tgt_percentage=1, station=station, phase=phase, 
+                                    instance=date)
 
-    # # Metrics
-    # utils.metrics_transformer(tgt_ys_train, y_hats_train, 'train', run=run)
-    # utils.metrics_transformer(tgt_ys_val, y_hats_val, 'validation', run=run)
-    # utils.metrics_transformer(tgt_ys_test, y_hats_test, 'test', run=run)
+    # Metrics
+    utils.metrics_transformer(tgt_ys_train, y_hats_train, 'train', run=run)
+    utils.metrics_transformer(tgt_ys_val, y_hats_val, 'validation', run=run)
+    utils.metrics_transformer(tgt_ys_test, y_hats_test, 'test', run=run)
