@@ -158,7 +158,7 @@ if __name__ == '__main__':
     task_type = 'MM' # MU for multivariate predicts univariate, MM for multivariate predicts multivariate
 
     # Define run number
-    run = 0
+    run = 1
     
     # Hyperparams
     batch_size = 128

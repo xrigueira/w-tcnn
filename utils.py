@@ -454,7 +454,10 @@ def metrics_unet(truth, hat, phase, run):
     
     rmse = np.sqrt(mean_squared_error(truth, hat))
     
-    # Print confuision matrix
+    # Convert the predictions to binary values (0 or 1)
+    truth = np.where(truth > 0.5, 1, 0)
+    hat = np.where(hat > 0.5, 1, 0)
+    
     from sklearn.metrics import confusion_matrix
     confusion_matrix = confusion_matrix(truth, hat)
     

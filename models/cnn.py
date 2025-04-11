@@ -83,12 +83,12 @@ class UNet(nn.Module):
         self.pool3 = nn.MaxPool2d(kernel_size=2, stride=1)
 
         self.encoder4 = DoubleConv(channels * 4, channels * 8)
-        self.pool4 = nn.MaxPool2d(kernel_size=2, stride=1)
+        self.pool4 = nn.MaxPool2d(kernel_size=1, stride=1) # Change kernel back to 2 if window size is bigger than 4
 
         self.encoder5 = DoubleConv(channels * 8, channels * 16)
 
         # Define the decoder
-        self.conv_transpose1 = nn.ConvTranspose2d(channels * 16, channels * 8, kernel_size=2, stride=1)
+        self.conv_transpose1 = nn.ConvTranspose2d(channels * 16, channels * 8, kernel_size=1, stride=1) # Change kernel back to 2 if window size is bigger than 4
         self.decoder1 = DoubleConv(channels * 16, channels * 8)
 
         self.conv_transpose2 = nn.ConvTranspose2d(channels * 8, channels * 4, kernel_size=2, stride=1)

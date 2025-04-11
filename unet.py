@@ -119,7 +119,7 @@ def test(dataloader, model, phase, device):
 
             # Store ground truth and prediction
             tgts_truth[i] = tgt
-            y_hat[i] = y_hat
+            y_hats[i] = y_hat
 
             # Save the results
             if phase != '':
@@ -131,13 +131,13 @@ def test(dataloader, model, phase, device):
     
     # Save the dictionary to a numpy file
     if phase != '':
-        np.save(f'results/run_u_{run}/results.npy', results, allow_pickle=True, fix_imports=False)
+        np.save(f'results/run_u_{run}/results_{phase}.npy', results, allow_pickle=True, fix_imports=False)
     
     # Pass the tensors to the CPU and convert to numpy arrays
     tgts_truth = tgts_truth.cpu().numpy()
-    y_hat = y_hat.cpu().numpy()
+    y_hats = y_hats.cpu().numpy()
 
-    return tgts_truth, y_hat
+    return tgts_truth, y_hats
 
 if __name__ == '__main__':
     
@@ -242,7 +242,7 @@ if __name__ == '__main__':
     utils.count_parameters(model)
 
     # Define optimizer and loss function
-    loss_function = nn.BCELoss()
+    loss_function = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
     # Instatiate scheduler
@@ -298,7 +298,8 @@ if __name__ == '__main__':
     print("Done! ---Execution time: %s seconds ---" % (time.time() - start_time))
 
     # Save results
-    utils.logger_cnn(run=run, batches=batch_size, input_channels=input_channels, channels=channels, d_fc=d_fc, lr=lr, epochs=epochs)
+    utils.logger_unet(run=run, batches=batch_size, input_channels=input_channels, channels=channels, 
+                    d_fc=d_fc, lr=lr, loss=epoch_val_loss, epochs=epochs, seed=seed, run_time=(time.time() - start_time))
 
     # Finalize the plot
     plt.ioff()  # Turn off interactive mode
