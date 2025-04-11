@@ -206,7 +206,8 @@ if __name__ == '__main__':
     
     # Define the training and validation bounds
     training_val_lower_bound = pd.Timestamp(2005, 1, 1)
-    training_val_upper_bound = pd.Timestamp(2017, 12, 31)
+    # training_val_upper_bound = pd.Timestamp(2017, 12, 31) # For the smoothed dataset
+    training_val_upper_bound = pd.Timestamp(2012, 11, 28) # For the balanced dataset
 
     # Get the global index of the train_upper_bound to later subset the data indices
     training_val_upper_index = round(data.index.get_loc(training_val_upper_bound) / step_size)

@@ -89,7 +89,7 @@ def read_data(data_dir: Union[str, Path] = 'data', station: int=901, timestamp_c
     data_dir = Path(data_dir)
     
     # Read smothed csv file
-    csv_files = list(data_dir.glob(f"*{station}_smo.csv"))
+    csv_files = list(data_dir.glob(f"*{station}_bal.csv"))
     
     if len(csv_files) > 1:
         raise ValueError("data_dir contains more than 1 csv file. Must only contain 1")
@@ -164,6 +164,25 @@ def count_parameters(model):
     print(f"Total trainable parameters: {total_params}")
     
     return total_params
+
+# Define weighted loss function
+class WeightedMSELoss(nn.Module):
+    def __init__(self, weight_factor=10.0):
+        """
+        Custom loss function that applies a higher weight to instances where the ground truth is not zero.
+        Args:
+            weight_factor (float): The factor by which to increase the weight for non-zero ground truth values.
+        """
+        super(WeightedMSELoss, self).__init__()
+        self.weight_factor = weight_factor
+
+    def forward(self, y_pred, y_true):
+        # Create a weight mask: higher weight for non-zero ground truth values
+        weights = torch.where(y_true != 0, self.weight_factor, 1.0)
+        
+        # Compute the weighted MSE loss
+        loss = weights * (y_pred - y_true) ** 2
+        return torch.mean(loss)
 
 # Define a class for early stopping
 class EarlyStopping:
@@ -572,7 +591,7 @@ def plots_unet(truth, hat, station, phase, run):
     plt.legend()
     # plt.show()
 
-    plt.savefig(f'results/run_y_{run}/u_{phase}.png', dpi=300)
+    plt.savefig(f'results/run_u_{run}/u_{phase}.png', dpi=300)
 
 def logger_transformer(run, batches, d_model, n_heads, encoder_layers, decoder_layers, dim_ll_encoder, dim_ll_decoder, lr, loss, epochs, seed, run_time):
 
@@ -628,7 +647,6 @@ def logger_unet(run, batches, input_channels, channels, d_fc, lr, loss, epochs, 
     # Save the hyperparameters in a text file
     with open('results/run_u_{}/results.txt'.format(run), 'w') as f:
         f.write('batches: ' + str(batches) + '\n')
-        f.write('d_model: ' + str(input_channels) + '\n')
         f.write('input_channels: ' + str(input_channels) + '\n')
         f.write('channels: ' + str(channels) + '\n')
         f.write('d_fc: ' + str(d_fc) + '\n')

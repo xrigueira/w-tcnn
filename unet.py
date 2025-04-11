@@ -45,6 +45,9 @@ def train(dataloader, model, loss_function, optimizer, device, df_training, epoc
         # Backpropagation
         loss.backward()
 
+        # Gradient clipping
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=2.0)
+
         # Update weights
         optimizer.step()
 
@@ -156,7 +159,7 @@ if __name__ == '__main__':
     station = 901
 
     # Define run number
-    run = 0
+    run = 3
 
     # Hyperparameters for the model
     batch_size = 128
@@ -177,12 +180,12 @@ if __name__ == '__main__':
     
     input_channels = 1
     channels = 2
-    d_fc = 128
+    d_fc = 4
     n_classes = 1 # Anomaly or non anomaly
 
     # Run parameters
-    lr = 0.001
-    epochs = 1
+    lr = 0.0001
+    epochs = 300
 
     # Get device
     device = ('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
@@ -193,7 +196,8 @@ if __name__ == '__main__':
 
     # Define the training and validation bounds
     training_val_lower_bound = pd.Timestamp(2005, 1, 1)
-    training_val_upper_bound = pd.Timestamp(2017, 12, 31)
+    # training_val_upper_bound = pd.Timestamp(2017, 12, 31) # For the smoothed dataset
+    training_val_upper_bound = pd.Timestamp(2012, 11, 28) # For the balanced dataset
 
     # Get the global index of the train_upper_bound to later subset the data indices
     training_val_upper_index = round(data.index.get_loc(training_val_upper_bound) / step_size)
