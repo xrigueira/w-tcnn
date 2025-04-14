@@ -39,16 +39,18 @@ class DoubleConv(nn.Module):
         - x (torch.Tensor): Output tensor.
     """
 
-    def __init__(self, in_channels, out_channels) -> None:
+    def __init__(self, in_channels, out_channels, dropout_rate) -> None:
         super().__init__()
 
         self.conv = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
+            nn.Dropout2d(p=dropout_rate),  # Add dropout after first activation
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True)
+            nn.ReLU(inplace=True),
+            nn.Dropout2d(p=dropout_rate)  # Add dropout after second activation
         )
 
     def forward(self, x):
@@ -57,7 +59,7 @@ class DoubleConv(nn.Module):
 
 # Define the UNet model
 class UNet(nn.Module):
-    def __init__(self, n_variables, window_size, n_classes, input_channels, channels, d_fc) -> None:
+    def __init__(self, n_variables, window_size, n_classes, input_channels, channels, d_fc, dropout_rate) -> None:
         super(UNet, self).__init__()
 
         """UNet model for image segmentation.
@@ -72,33 +74,36 @@ class UNet(nn.Module):
             - x (torch.Tensor): Output tensor.
         """
 
+        # Define dropout layer
+        self.dropout = nn.Dropout(p=dropout_rate)
+
         # Define the encoder
-        self.encoder1 = DoubleConv(input_channels, channels)
+        self.encoder1 = DoubleConv(input_channels, channels, dropout_rate)
         self.pool1 = nn.MaxPool2d(kernel_size=2, stride=1)
 
-        self.encoder2 = DoubleConv(channels, channels * 2)
+        self.encoder2 = DoubleConv(channels, channels * 2, dropout_rate)
         self.pool2 = nn.MaxPool2d(kernel_size=2, stride=1)
 
-        self.encoder3 = DoubleConv(channels * 2, channels * 4)
+        self.encoder3 = DoubleConv(channels * 2, channels * 4, dropout_rate)
         self.pool3 = nn.MaxPool2d(kernel_size=2, stride=1)
 
-        self.encoder4 = DoubleConv(channels * 4, channels * 8)
+        self.encoder4 = DoubleConv(channels * 4, channels * 8, dropout_rate)
         self.pool4 = nn.MaxPool2d(kernel_size=1, stride=1) # Change kernel back to 2 if window size is bigger than 4
 
-        self.encoder5 = DoubleConv(channels * 8, channels * 16)
+        self.encoder5 = DoubleConv(channels * 8, channels * 16, dropout_rate)
 
         # Define the decoder
         self.conv_transpose1 = nn.ConvTranspose2d(channels * 16, channels * 8, kernel_size=1, stride=1) # Change kernel back to 2 if window size is bigger than 4
-        self.decoder1 = DoubleConv(channels * 16, channels * 8)
+        self.decoder1 = DoubleConv(channels * 16, channels * 8, dropout_rate)
 
         self.conv_transpose2 = nn.ConvTranspose2d(channels * 8, channels * 4, kernel_size=2, stride=1)
-        self.decoder2 = DoubleConv(channels * 8, channels * 4)
+        self.decoder2 = DoubleConv(channels * 8, channels * 4, dropout_rate)
 
         self.conv_transpose3 = nn.ConvTranspose2d(channels * 4, channels * 2, kernel_size=2, stride=1)
-        self.decoder3 = DoubleConv(channels * 4, channels * 2)
+        self.decoder3 = DoubleConv(channels * 4, channels * 2, dropout_rate)
 
         self.conv_transpose4 = nn.ConvTranspose2d(channels * 2, channels, kernel_size=2, stride=1)
-        self.decoder4 = DoubleConv(channels * 2, channels)
+        self.decoder4 = DoubleConv(channels * 2, channels, dropout_rate)
         
         self.outconv = nn.Conv2d(channels, n_classes, kernel_size=1)
         
@@ -149,8 +154,11 @@ class UNet(nn.Module):
 
         # Linear layers
         x = relu(self.fc1(xoutconv))
+        x = self.dropout(x)
         x = relu(self.fc2(x))
+        x = self.dropout(x)
         x = relu(self.fc3(x))
+        x = self.dropout(x)
         x = self.fc4(x)
 
         return x

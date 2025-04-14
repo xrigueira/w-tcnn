@@ -185,19 +185,20 @@ if __name__ == '__main__':
 
     # Run parameters
     lr = 0.0001
-    epochs = 300
+    epochs = 500
 
     # Get device
     device = ('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
     print(f'Using {device} device')
 
     # Read data
-    data = utils.read_data(timestamp_col_name=timestamp_col_name)
+    data = utils.read_data(station=station, timestamp_col_name=timestamp_col_name)
 
     # Define the training and validation bounds
     training_val_lower_bound = pd.Timestamp(2005, 1, 1)
     # training_val_upper_bound = pd.Timestamp(2017, 12, 31) # For the smoothed dataset
-    training_val_upper_bound = pd.Timestamp(2012, 11, 28) # For the balanced dataset
+    training_val_upper_bound = pd.Timestamp(2012, 11, 28) # For the 901 balanced dataset
+    # training_val_upper_bound = pd.Timestamp(2017, 6, 22) # For the 905 balanced dataset
 
     # Get the global index of the train_upper_bound to later subset the data indices
     training_val_upper_index = round(data.index.get_loc(training_val_upper_bound) / step_size)
@@ -239,7 +240,7 @@ if __name__ == '__main__':
 
     # Instantiate the cnn model and send it to device
     model = cnn.UNet(n_variables=n_variables, window_size=window_size, n_classes=n_classes,
-                    input_channels=input_channels, channels=channels, d_fc=d_fc).to(device)
+                    input_channels=input_channels, channels=channels, d_fc=d_fc, dropout_rate=0.00).to(device)
 
     # Print model and number of parameters
     print('Defined model:\n', model)
