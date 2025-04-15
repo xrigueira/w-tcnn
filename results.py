@@ -15,13 +15,14 @@ results_unet = np.load(f'results/run_u_{run}/results_{phase}.npy', allow_pickle=
 # Plot results some dates
 plot_dates = pd.date_range(start=pd.Timestamp(2020, 11, 21, 0, 0, 0), 
                         end=pd.Timestamp(2020, 11, 27, 23, 0, 0), 
+                        # end=pd.Timestamp(2020, 11, 21, 1, 0, 0), 
                         freq='h').to_list()
 
-# for i, (date, data) in enumerate(results_transformer.items()):
-#     if date in plot_dates:
-#         utils.plots_transformer(date=date, src=data['src'], truth=data['tgt_y'], hat=data['y_hat'], weights=data['weights'], 
-#                                 tgt_percentage=1, station=station, phase=phase, 
-#                                 instance=date)
+for i, (date, data) in enumerate(results_transformer.items()):
+    if date in plot_dates:
+        utils.plots_transformer(date=date, src=data['src'], truth=data['tgt_y'], hat=data['y_hat'], weights=data['weights'], 
+                                tgt_percentage=1, output_sequence_len=4, station=station, phase=phase, 
+                                instance=date)
 
 scores = {}
 for i, (date, data) in enumerate(results_unet.items()):

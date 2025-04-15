@@ -1,4 +1,5 @@
 import os
+import datetime
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -495,7 +496,7 @@ def metrics_unet(truth, hat, phase, run):
 
     return rmse, confusion_matrix
 
-def plots_transformer(date, src, truth, hat, weights, tgt_percentage, station, phase, instance):
+def plots_transformer(date, src, truth, hat, weights, tgt_percentage, output_sequence_len, station, phase, instance):
     
     """
     Plot the observed and predicted values
@@ -516,14 +517,14 @@ def plots_transformer(date, src, truth, hat, weights, tgt_percentage, station, p
     """
 
     # Subset the last row of the weights
-    weights = weights[-1]
+    weights = np.append(weights[-1], [0]*output_sequence_len) # Add output_sequence_len zeros to matche ground truth length
     
     # Concatenate the src with the tgt (truth) values 
     ground_truth = np.concatenate((src[-int(len(src)*tgt_percentage):], truth))
     
     # Plot the truth and the prediction
-    colors_ground_truth = ['red', 'dodgerblue', 'mediumpurple', 'dimgrey', 'chocolate', 'goldenrod', 'green', 'black']
-    colors_hat = ['salmon', 'lightskyblue', 'plum', 'darkgrey', 'orange', 'gold', 'yellowgreen', 'black']
+    colors_ground_truth = ['salmon', 'lightskyblue', 'plum', 'darkgrey', 'orange', 'gold', 'yellowgreen', 'black']
+    colors_hat = ['red', 'dodgerblue', 'mediumpurple', 'dimgrey', 'chocolate', 'goldenrod', 'green', 'black']
     labels = ['am', 'co', 'do', 'ph', 'pr', 'tu', 'wt', 'lb']
 
     # Create the plot
@@ -531,26 +532,50 @@ def plots_transformer(date, src, truth, hat, weights, tgt_percentage, station, p
     ax2 = ax1.twinx()
 
     # Plot bars on primary axes
-    x_data = range(len(src))
-    bars = ax1.bar(x_data, weights, color='darkseagreen', width=0.7, label='Weights')
+    x_data = range(-96, 4)
+    # x_data = pd.date_range(start=date - datetime.timedelta(hours=len(src)/4), periods=len(weights), freq='15min')
+    bars = ax1.bar(x_data, weights, color='darkseagreen', width=0.7, alpha=0.75, label='Weights')
 
     # Invert the y-axis for bars
     ax1.invert_yaxis()
 
     # Loop over each column of the truth
     for i in range(ground_truth.shape[1]):
-        ax2.plot(ground_truth[:, i], label=f'{labels[i]}', color=colors_ground_truth[i], linewidth=0.5)
+        ax2.plot(x_data, ground_truth[:, i], label=f'{labels[i]}', color=colors_ground_truth[i], linestyle='solid', linewidth=1.5)
 
     # Loop over each column of the prediction and plot it starting when the concatenated part of tgt ends
     tgt_length = int(len(src)*tgt_percentage)
     for i in range(hat.shape[1]):
-        ax2.plot(range(tgt_length, tgt_length + hat.shape[0]), hat[:, i], color=colors_hat[i], linewidth=0.5)
+        # ax2.plot(range(tgt_length, tgt_length + hat.shape[0]), hat[:, i], color=colors_hat[i], linestyle=(0, (1, 1)), linewidth=1)
+        ax2.plot(range(hat.shape[0]), hat[:, i], color=colors_hat[i], linestyle=(0, (1, 1)), linewidth=1.5)
 
-    plt.title(f'Results for instance {date.day}-{date.month}-{date.year}-{date.hour} of station {station}')
-    plt.xlabel(r'time (15 min)')
-    ax1.set_ylabel('Weights', color='dimgray')
-    ax2.set_ylabel(r'Values', color='dimgray')
+    # Set exact x-axis limits to remove empty space
+    ax1.set_xlim(min(x_data), max(x_data))
+    ax2.set_xlim(min(x_data), max(x_data))
     
+    ax1.set_xlabel(r'Time steps (15 min)', fontname='Arial', fontsize=12)
+    ax1.set_ylabel('Weights', color='dimgray', fontname='Arial', fontsize=12)
+    ax2.set_ylabel(r'Values', color='dimgray', fontname='Arial', fontsize=12)
+    plt.title(f'Instance {date.day}-{date.month}-{date.year} {date.hour}:00h for station {station}', fontname='Arial')
+
+    # Remove gridlines
+    ax1.grid(False)
+    ax2.grid(False)
+
+    # Set facecolor to white
+    ax1.set_facecolor('white')
+    ax2.set_facecolor('white')
+
+    # Set the edge color of the axes
+    for spine in ax1.spines.values():
+        spine.set_edgecolor('black')
+    for spine in ax2.spines.values():
+        spine.set_edgecolor('black')
+    
+    # ax1.tick_params('y', colors='darkseagreen')  # Set color for right y-axis ticks
+    # ax2.tick_params('y', colors='black')  # Set color for left y-axis ticks
+    
+    # Get bars and labels for legend
     bars, labels0 = ax1.get_legend_handles_labels()  # Get bars and labels for legend
     lines1, labels1 = ax2.get_legend_handles_labels()  # Get lines and labels for legend
 
@@ -559,7 +584,7 @@ def plots_transformer(date, src, truth, hat, weights, tgt_percentage, station, p
     labels = labels0 + labels1
 
     # Add legend to primary axes
-    plt.legend(handles, labels, loc='upper left')  # Add legend to primary axes
+    ax1.legend(handles, labels, loc='lower center', ncol=8, bbox_to_anchor=(0.5, -0.2), prop={'family': 'Arial', 'size': 12})  # Add legend to primary axes
     
     # Show the plot
     plt.tight_layout()
