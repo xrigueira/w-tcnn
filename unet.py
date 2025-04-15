@@ -95,7 +95,7 @@ def val(dataloader, model, loss_function, device, df_validation, epoch):
     return epoch_val_loss
 
 # Define the test function
-def test(dataloader, model, phase, device):
+def test(dataloader, model, phase, dates, device):
     
     # Get ground truth
     tgts_truth = torch.zeros(len(dataloader), device=device)
@@ -322,9 +322,9 @@ if __name__ == '__main__':
     # print(f'Loaded PyTorch model from results/run_u_{run}/unet_model.pth')
 
     # Inference
-    tgts_train, tgt_hats_train = test(training_data_inference, model, 'train', device)
-    tgts_val, tgt_hats_val = test(validation_data_inference, model, 'validation', device)
-    tgts_test, tgt_hats_test = test(testing_data, model, 'test', device)
+    tgts_train, tgt_hats_train = test(training_data_inference, model, 'train', dates_train, device)
+    tgts_val, tgt_hats_val = test(validation_data_inference, model, 'validation', dates_validation, device)
+    tgts_test, tgt_hats_test = test(testing_data, model, 'test', dates_test, device)
 
     # Plot testing results
     utils.plots_unet(tgts_train, tgt_hats_train, station=station, phase='train', run=run)

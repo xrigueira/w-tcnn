@@ -3,6 +3,9 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 plt.style.use('ggplot')
+from matplotlib import rcParams
+rcParams['font.family'] = 'monospace'
+
 from scipy.stats import pearsonr
 from prettytable import PrettyTable
 from sklearn.metrics import mean_squared_error, r2_score
@@ -562,7 +565,7 @@ def plots_transformer(date, src, truth, hat, weights, tgt_percentage, station, p
     plt.tight_layout()
     # plt.show()
 
-    plt.savefig(f'plots/tplot_{date.day}_{date.month}_{date.year}_{date.hour}.png', dpi=300)
+    plt.savefig(f'plots/tplot_{date.day}_{date.month}_{date.year}_{date.hour}.pdf', format='pdf', dpi=300, bbox_inches='tight')
 
     # Close the plot
     plt.close(fig)
