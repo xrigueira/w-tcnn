@@ -93,7 +93,7 @@ def read_data(data_dir: Union[str, Path] = 'data', station: int=901, timestamp_c
     data_dir = Path(data_dir)
     
     # Read smothed csv file
-    csv_files = list(data_dir.glob(f"*{station}_bal.csv"))
+    csv_files = list(data_dir.glob(f"*{station}_smo.csv"))
     
     if len(csv_files) > 1:
         raise ValueError("data_dir contains more than 1 csv file. Must only contain 1")
