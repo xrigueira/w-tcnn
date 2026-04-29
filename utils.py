@@ -404,8 +404,8 @@ def get_multivariate_r2(multivariate_modeled, multivariate_observed):
 
 def metrics_transformer(truths, hats, phase, run):
     """
-    Calculate the mean square error and mean absolute error
-    and r2 for each variate of the model's predictions.
+    Calculate the nse, mean square error and mean absolute error, pbias,
+    kge, and r2 for each variate of the model's predictions.
     ----------
     Arguments:
     truth (np.array): np.array, the observed values
@@ -413,36 +413,51 @@ def metrics_transformer(truths, hats, phase, run):
     phase (str): the phase of the data. Must be one of "train", "val", or "test"
     
     Returns:
+    nse (list): Nash-Sutcliffe efficiency
+    pbias (list): percent bias
     mse (list): root mean square error
     mae (list): mean absolute error
+    kge (list): Kling-Gupta efficiency
     r2 (list): r-squared value
     """
 
     # Define objects to store the results
-    mse_final, mae_final, r2_final = [], [], []
+    nse_final, pbias_final, mse_final, mae_final, kge_final, r2_final = [], [], [], [], [], []
 
     # Parse the truths and hats objects
     for tgt_y, y_hat in zip(truths, hats):
 
+        nse = get_multivariate_nash_sutcliffe_efficiency(tgt_y, y_hat)
+        pbias = get_multivariate_pbias(tgt_y, y_hat)
         mse = get_multivariate_mse(tgt_y, y_hat)
         mae = get_multivariate_mae(tgt_y, y_hat)
+        kge = get_multivariate_kge(tgt_y, y_hat)
         r2 = get_multivariate_r2(tgt_y, y_hat)
 
         # Append results
+        nse_final.append(nse)
+        pbias_final.append(pbias)
         mse_final.append(mse)
         mae_final.append(mae)
+        kge_final.append(kge)
         r2_final.append(r2)
     
     # Get the mean of each metric by variable
-    mse_final, mae_final, r2_final = np.array(mse_final), np.array(mae_final), np.array(r2_final)
+    nse_final, pbias_final, mse_final, mae_final, kge_final, r2_final = np.array(nse_final), np.array(pbias_final), np.array(mse_final), np.array(mae_final), np.array(kge_final), np.array(r2_final)    
+    nse_final = np.mean(nse_final, axis=0)
+    pbias_final = np.mean(pbias_final, axis=0)
     mse_final = np.mean(mse_final, axis=0)
     mae_final = np.mean(mae_final, axis=0)
+    kge_final = np.mean(kge_final, axis=0)
     r2_final = np.mean(r2_final, axis=0)
 
     # Create a dictionary with the metrics
     metrics = {
+        'Nash-Sutcliffe efficiency': nse_final,
+        'Percent bias': pbias_final,
         'Mean squared error': mse_final,
         'Mean absolute error': mae_final,
+        'Kling-Gupta efficiency': kge_final,
         'R-squared': r2_final,
     }
 
@@ -459,7 +474,7 @@ def metrics_transformer(truths, hats, phase, run):
     # Close the file
     f.close()
 
-    return mse_final, mae_final, r2_final
+    return nse_final, pbias_final, mse_final, mae_final, kge_final, r2_final
 
 def metrics_unet(truth, hat, phase, run):
     """

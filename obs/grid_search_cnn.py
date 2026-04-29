@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 import utils
 import dataset as ds
 import models.cnn as cnn
-import unet
+import obs.unet as unet
 
 # Ignore warnings
 import warnings

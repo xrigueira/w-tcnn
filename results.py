@@ -1,3 +1,5 @@
+from pdb import run
+
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -6,6 +8,26 @@ import matplotlib.pyplot as plt
 plt.style.use('ggplot')
 
 import utils
+
+def metrics_transformer(run: int = 0):
+    
+    # Load transformer results (all splits)
+    transformer_train = np.load(f'results/run_t_{run}/results_train.npy', allow_pickle=True, fix_imports=True).item()
+    transformer_validation = np.load(f'results/run_t_{run}/results_validation.npy', allow_pickle=True, fix_imports=True).item()
+    transformer_test = np.load(f'results/run_t_{run}/results_test.npy', allow_pickle=True, fix_imports=True).item()
+
+    # Extract truths and hats for each split
+    tgt_y_train = np.array([transformer_train[ts]['tgt_y'] for ts in transformer_train.keys()])
+    y_hat_train = np.array([transformer_train[ts]['y_hat'] for ts in transformer_train.keys()])
+    tgt_y_validation = np.array([transformer_validation[ts]['tgt_y'] for ts in transformer_validation.keys()])
+    y_hat_validation = np.array([transformer_validation[ts]['y_hat'] for ts in transformer_validation.keys()])
+    tgt_y_test = np.array([transformer_test[ts]['tgt_y'] for ts in transformer_test.keys()])
+    y_hat_test = np.array([transformer_test[ts]['y_hat'] for ts in transformer_test.keys()])
+
+    # Calculate metrics for each split
+    metrics_train = utils.metrics_transformer(tgt_y_train, y_hat_train, phase='train', run=run)
+    metrics_validation = utils.metrics_transformer(tgt_y_validation, y_hat_validation, phase='validation', run=run)
+    metrics_test = utils.metrics_transformer(tgt_y_test, y_hat_test, phase='test', run=run)
 
 def plots_predictions(station: int = 901, run: int = 0, phase: str = 'test'):
 
@@ -158,9 +180,12 @@ def weights_analysis(station: int = 901, run: int = 0, phase: str = 'test'):
 
 if __name__ == '__main__':
     
+    # Call the function to calculate metrics
+    metrics_transformer(run=1)
+    
     # Call the function to plot predictions
     # plots_predictions(station=901, run=0, phase='test')
     
     # Call the function to analyze weights
-    weights_analysis(station=901, run=0, phase='test')
+    # weights_analysis(station=901, run=0, phase='test')
     
