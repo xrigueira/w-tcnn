@@ -119,11 +119,27 @@ print("Confusion matrix (rows=true, cols=pred):")
 print(f"  TN={cm[0,0]}  FP={cm[0,1]}")
 print(f"  FN={cm[1,0]}  TP={cm[1,1]}")
 
+# Evaluate on transformer test
+X_test_transformer, y_test_transformer, ts_test_transformer = build_features_labels(transformer_test, label_series, threshold)
+y_hat_transformer = rf.predict(X_test_transformer)
+y_prob_transformer = rf.predict_proba(X_test_transformer)[:, 1]
+
+print("\n--- Transformer test results ---")
+print(f"Accuracy : {accuracy_score(y_test_transformer, y_hat_transformer):.4f}")
+print("\nClassification report:")
+print(classification_report(y_test_transformer, y_hat_transformer, target_names=['Normal', 'Anomaly'], zero_division=0))
+cm_transformer = confusion_matrix(y_test_transformer, y_hat_transformer)
+
+print("Confusion matrix (rows=true, cols=pred):")
+print(f"  TN={cm_transformer[0,0]}  FP={cm_transformer[0,1]}")
+print(f"  FN={cm_transformer[1,0]}  TP={cm_transformer[1,1]}")
+
 # Save predictions with timestamps
 results_df = pd.DataFrame({
-    'timestamp': ts_test,
-    'y_true':    y_test.astype(int),
-    'y_pred':    y_hat.astype(int)
+    'timestamp': ts_test_transformer,
+    'y_true':    y_test_transformer.astype(int),
+    'y_pred':    y_hat_transformer.astype(int),
+    'y_prob':    y_prob_transformer
 })
 
 results_df.to_csv(f'results/run_t_{run}/rf_predictions_test.csv', index=False)
